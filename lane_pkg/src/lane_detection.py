@@ -39,19 +39,17 @@ class LaneDetection:
         rospy.init_node("lane_detection_node")
 
         # 퍼블리셔 설정
-        self.steer_pub = rospy.Publisher('/cam/steer', Coss, queue_size=1)
-        self.state_pub = rospy.Publisher('/cam/mission_state', Coss, queue_size=1)
+        self.camera_pub = rospy.Publisher('/camera', Coss, queue_size=1)
 
         # 서브스크라이버 설정
         rospy.Subscriber("/usb_cam/image_rect_color", Image, self.camCB)
 
         # 변수 초기화
         self.bridge = CvBridge()
-        self.steer_msg = Coss()
-        self.steer_msg.cam_steer = 0.0
-
-        self.state_msg = Coss()
-        self.state_msg.mission_state = 0
+        
+        self.camera_msg = Coss()
+        self.camera_msg.cam_steer = 0.0
+        self.camera_msg.mission_state = 0
 
         # 슬라이딩 윈도우 객체 초기화
         self.slidewindow = SlideWindow()  # 첫 번째 구간용
@@ -95,21 +93,33 @@ class LaneDetection:
         """
         y, x = self.img.shape[0:2]
         
+        # 원본 이미지 복사 (정지선 감지용)
+        stopline_img = self.img.copy()
+        
+        # ROI 마스크 생성 - 위쪽 50%를 검게 만들기 (차선 감지용)
+        roi_mask = np.zeros((y, x), dtype=np.uint8)
+        crop_height = y // 2
+        roi_mask[crop_height:, :] = 255  # 아래쪽 50%만 흰색으로
+        
+        # 원본 이미지에 ROI 마스크 적용 (차선 감지용)
+        masked_img = cv2.bitwise_and(self.img, self.img, mask=roi_mask)
+        
         # 1. 이미지 전처리 - HSV 변환 및 색상 필터링
-        self.img_hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        self.img_hsv = cv2.cvtColor(masked_img, cv2.COLOR_BGR2HSV)
         
         # 노란색 차선 감지
         yellow_lower = np.array([10, 50, 50])
         yellow_upper = np.array([40, 255, 255])
         self.yellow_range = cv2.inRange(self.img_hsv, yellow_lower, yellow_upper)
         
-        # 흰색 차선 감지 (두 가지 범위 사용)
-        white_lower_bound1 = np.array([0, 0, 130])
-        white_upper_bound1 = np.array([179, 30, 255])
-        self.white_range = cv2.inRange(self.img_hsv, white_lower_bound1, white_upper_bound1)
+        # # 흰색 차선 감지 (두 가지 범위 사용)
+        # white_lower_bound1 = np.array([0, 0, 130])
+        # white_upper_bound1 = np.array([179, 30, 255])
+        # self.white_range = cv2.inRange(self.img_hsv, white_lower_bound1, white_upper_bound1)
                 
         # 노란색과 흰색 마스크 통합
-        combined_range = cv2.bitwise_or(self.yellow_range, self.white_range)
+        # combined_range = cv2.bitwise_or(self.yellow_range, self.white_range)
+        combined_range = self.yellow_range
         
         # 가우시안 블러로 노이즈 제거
         combined_range = cv2.GaussianBlur(combined_range, (5, 5), 0)
@@ -120,15 +130,15 @@ class LaneDetection:
         combined_range = cv2.morphologyEx(combined_range, cv2.MORPH_OPEN, kernel)   # 작은 노이즈 제거
         
         result = combined_range
-        filtered_img = cv2.bitwise_and(self.img, self.img, mask=result)
+        filtered_img = cv2.bitwise_and(masked_img, masked_img, mask=result)
         
         # 2. 원근 변환 - 버드아이 뷰로 변환
         # 소스 포인트 설정 (원본 이미지에서의 사다리꼴 영역)
         # 640x480 해상도에 맞게 조정
-        S_Upper_X = 270
+        S_Upper_X = 171
         S_Upper_Y = 240
         S_Lower_X = 0
-        S_Lower_Y = 0
+        S_Lower_Y = 58
         
         src_point1 = [0 + S_Lower_X, 480 - S_Lower_Y]      # 왼쪽 아래
         src_point2 = [0 + S_Upper_X, 0 + S_Upper_Y]        # 왼쪽 위
@@ -139,9 +149,9 @@ class LaneDetection:
         
         # 목적지 포인트 설정 (변환된 이미지에서의 직사각형 영역)
         # 640x480 해상도에 맞게 조정
-        D_Upper_X = 0
-        D_Upper_Y = 0
-        D_Lower_X = 210
+        D_Upper_X = 182
+        D_Upper_Y = 88
+        D_Lower_X = 207
         D_Lower_Y = 0
         
         dst_point1 = [0 + D_Lower_X, 480 - D_Lower_Y]      # 왼쪽 아래 (165, 480)
@@ -159,16 +169,30 @@ class LaneDetection:
         # 3. 이미지 이진화 - 차선 픽셀 추출
         self.bin_img = np.zeros_like(self.grayed_img)
         self.bin_img[self.grayed_img > 60] = 1  # 밝기가 60 이상인 픽셀만 선택
-                
-        # 4. 정지선 감지
-        detected, stopline_indices, self.stopline_count = self.stopline_detector.detect(self.bin_img)
         
+        # 4. 정지선 감지 (원본 이미지 별도 처리)
+        # 정지선 감지용 이미지 전처리
+        stopline_hsv = cv2.cvtColor(stopline_img, cv2.COLOR_BGR2HSV)
+        
+        # 흰색 정지선 감지
+        white_lower = np.array([0, 0, 130])
+        white_upper = np.array([179, 30, 255])
+        white_mask = cv2.inRange(stopline_hsv, white_lower, white_upper)
+        
+        # 정지선 감지용 이미지 이진화
+        stopline_gray = cv2.cvtColor(stopline_img, cv2.COLOR_BGR2GRAY)
+        stopline_bin = np.zeros_like(stopline_gray)
+        stopline_bin[white_mask > 0] = 1
+        
+        # 정지선 감지 수행
+        detected, stopline_indices, self.stopline_count = self.stopline_detector.detect(stopline_bin)
+                
         # 정지선 감지 및 쿨다운 처리
         if detected and self.can_update_state():
-            self.state_msg.mission_state += 1  # 정지선 감지 상태 설정
+            self.camera_msg.mission_state += 1  # 정지선 감지 상태 설정
             self.last_state_update_time = rospy.get_time()  # 현재 시간 기록
             self.stopline_detector.reset_count()  # 카운터 리셋하여 중복 감지 방지
-            rospy.loginfo(f"정지선 감지! 미션 상태: {self.state_msg.mission_state}")
+            rospy.loginfo(f"정지선 감지! 미션 상태: {self.camera_msg.mission_state}")
 
 
         # 5. 슬라이딩 윈도우로 차선 검출
@@ -197,15 +221,15 @@ class LaneDetection:
         angle = pid.pid_control(self.center_index - 320)  # 이미지 중앙(320)과의 오차 계산
         
         # 7. 제어 명령 발행 
-        self.steer_msg.cam_steer = -radians(angle)  # 각도를 라디안으로 변환 (조향각)
+        self.camera_msg.cam_steer = -radians(angle)  # 각도를 라디안으로 변환 (조향각)
 
-        # 정지선 감지 횟수 및 제어 명령 발행
-        self.state_pub.publish(self.state_msg)
-        self.steer_pub.publish(self.steer_msg)
+        # 통합 메시지 발행
+        self.camera_pub.publish(self.camera_msg)
 
         
         # 결과 이미지 표시
         cv2.imshow("out_img", self.out_img)
+        cv2.imshow("combined_range", combined_range)
         cv2.waitKey(1)
 
     def camCB(self, msg):
