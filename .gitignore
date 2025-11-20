@@ -1,0 +1,30 @@
+# ROS
+build/
+devel/
+*.pyc
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Build artifacts
+*.o
+*.so
+*.a
+
+# Ignore all packages except the ones we want to track
+/*
+!/line_red/
+!/lane_pkg/
+!/image_preprocessing/
+!.gitignore
+!README.md
