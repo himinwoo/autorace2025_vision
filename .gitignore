@@ -30,5 +30,6 @@ Makefile
 !/onelane_detection/
 !/stopline_pkg/
 !/sign_detector/
+!/yolov8_nuc_optimized/
 !.gitignore
 !README.md

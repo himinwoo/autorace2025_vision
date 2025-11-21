@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- 
+    YOLOv8 Detector Launch File
+    Intel NUC 최적화 YOLOv8 객체 검출 노드 실행
+  -->
+
+  <!-- Arguments -->
+  <arg name="model_path" default="yolov8n.pt" />
+  <arg name="input_topic" default="/usb_cam/image_rect_color" />
+  <arg name="output_topic" default="/yolov8/detections" />
+  <arg name="info_topic" default="/yolov8/detection_info" />
+  
+  <!-- Performance settings -->
+  <arg name="use_openvino" default="true" />
+  <arg name="use_fp16" default="true" />
+  <arg name="num_threads" default="4" />
+  <arg name="input_size" default="640" />
+  
+  <!-- Detection settings -->
+  <arg name="confidence_threshold" default="0.5" />
+  <arg name="iou_threshold" default="0.45" />
+  
+  <!-- Visualization settings -->
+  <arg name="enable_visualization" default="true" />
+  <arg name="show_fps" default="true" />
+  
+  <!-- YOLOv8 Detector Node -->
+  <node name="yolov8_detector" pkg="yolov8_nuc_optimized" type="yolov8_detector.py" output="screen">
+    <!-- Model parameters -->
+    <param name="model_path" value="$(arg model_path)" />
+    <param name="input_size" value="$(arg input_size)" />
+    
+    <!-- Performance parameters -->
+    <param name="use_openvino" value="$(arg use_openvino)" />
+    <param name="use_fp16" value="$(arg use_fp16)" />
+    <param name="num_threads" value="$(arg num_threads)" />
+    <param name="device" value="CPU" />
+    
+    <!-- Detection parameters -->
+    <param name="confidence_threshold" value="$(arg confidence_threshold)" />
+    <param name="iou_threshold" value="$(arg iou_threshold)" />
+    <param name="max_detections" value="100" />
+    
+    <!-- Topic parameters -->
+    <param name="input_topic" value="$(arg input_topic)" />
+    <param name="output_topic" value="$(arg output_topic)" />
+    <param name="info_topic" value="$(arg info_topic)" />
+    
+    <!-- Visualization parameters -->
+    <param name="enable_visualization" value="$(arg enable_visualization)" />
+    <param name="show_labels" value="true" />
+    <param name="show_confidence" value="true" />
+    <param name="box_thickness" value="2" />
+    <param name="font_scale" value="0.6" />
+    
+    <!-- Debug parameters -->
+    <param name="debug" value="false" />
+    <param name="show_fps" value="$(arg show_fps)" />
+    <param name="log_detections" value="false" />
+  </node>
+
+</launch>

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>yolov8_nuc_optimized</name>
+  <version>1.0.0</version>
+  <description>YOLOv8 optimized for Intel NUC with fast inference and clean code</description>
+  
+  <maintainer email="user@example.com">Your Name</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <depend>rospy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  
+</package>
