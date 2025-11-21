@@ -27,14 +27,15 @@ class SlideWindow:
         left_lane_inds = []
         right_lane_inds = []
 
-        win_h1 = 200  # 300 → 200 (2/3 비율)
-        win_h2 = 480  # 720 → 480 (2/3 비율)
-        win_l_w_l = 100  # 200 → 100 (1/2 비율)
-        win_l_w_r = 275  # 550 → 275 (1/2 비율)
-        win_r_w_l = 640 - 235  # 810 → 405 (1/2 비율)
-        win_r_w_r = 640 - 60   # 1160 → 580 (1/2 비율)
+        # 크롭된 이미지(높이 절반)에 맞춘 좌표
+        win_h1 = 20   # 원본 200에서 크롭 시작점(240) 빼면 -40이므로 사용 안 함 → 최소값 사용
+        win_h2 = 240  # 원본 480에서 크롭 시작점(240) 빼면 240
+        win_l_w_l = 100
+        win_l_w_r = 275
+        win_r_w_l = 640 - 235
+        win_r_w_r = 640 - 60
         
-        circle_height = 240  # 360 → 240 (2/3 비율)
+        circle_height = 0  # 원본 240에서 크롭 시작점(240) 빼면 0 (이미지 하단)
 
         pts_left = np.array([[win_l_w_l, win_h2], [win_l_w_l, win_h1], [win_l_w_r, win_h1], [win_l_w_r, win_h2]], np.int32)
         cv2.polylines(out_img, [pts_left], False, (0,255,0), 1)
@@ -44,8 +45,9 @@ class SlideWindow:
         pts_catch = np.array([[0, circle_height], [width, circle_height]], np.int32)
         cv2.polylines(out_img, [pts_catch], False, (0,120,120), 1)
 
-        good_left_inds = ((nonzerox >= win_l_w_l) & (nonzeroy <= win_h2) & (nonzeroy > win_h1) & (nonzerox <= win_l_w_r)).nonzero()[0]
-        good_right_inds = ((nonzerox >= win_r_w_l) & (nonzeroy <= win_h2) & (nonzeroy > win_h1) & (nonzerox <= win_r_w_r)).nonzero()[0]
+        # 크롭된 이미지에서는 win_h1보다 win_h2 체크가 더 중요 (win_h1은 이미지 밖일 수 있음)
+        good_left_inds = ((nonzerox >= win_l_w_l) & (nonzeroy <= win_h2) & (nonzeroy >= win_h1) & (nonzerox <= win_l_w_r)).nonzero()[0]
+        good_right_inds = ((nonzerox >= win_r_w_l) & (nonzeroy <= win_h2) & (nonzeroy >= win_h1) & (nonzerox <= win_r_w_r)).nonzero()[0]
 
         x_current_left = None
         y_current_left = None

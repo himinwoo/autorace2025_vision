@@ -23,8 +23,12 @@ Makefile
 
 # Ignore all packages except the ones we want to track
 /*
-!/line_red/
 !/lane_pkg/
 !/image_preprocessing/
+!/camera_merger/
+!/color_detector/
+!/onelane_detection/
+!/stopline_pkg/
+!/sign_detector/
 !.gitignore
 !README.md

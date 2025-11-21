@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>red_detector</name>
+  <name>color_detector</name>
   <version>0.0.1</version>
-  <description>The red_detector package for detecting red objects and publishing a topic.</description>
+  <description>The color_detector package for detecting red and blue objects</description>
   
   <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>MIT</license>

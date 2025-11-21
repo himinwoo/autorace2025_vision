@@ -1,0 +1,18 @@
+<launch>
+  <!-- Stopline Detection Node -->
+  <node name="stopline_detection_node" pkg="stopline_pkg" type="stopline_detection_node.py" output="screen">
+    <!-- 이미지 크롭 파라미터 -->
+    <param name="crop_top" value="280" />  <!-- 상단 280픽셀 제거 (480p 기준) -->
+    
+    <!-- 정지선 감지 파라미터 -->
+    <param name="down_hist_start_line" value="0" />  <!-- 크롭된 이미지 전체 검색 -->
+    <param name="stopline_threshold" value="10" />
+    <param name="count_threshold" value="10" />
+    <param name="cooldown_duration" value="3.0" />
+    <param name="show_debug_image" value="true" />
+    
+    <!-- 밝기 임계값 파라미터 (그레이스케일 기반) -->
+    <param name="white_threshold" value="100" />
+    <param name="histogram_threshold" value="600" />
+  </node>
+</launch>

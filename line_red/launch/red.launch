@@ -1,3 +1,0 @@
-<launch>
-  <node name="red_detector" pkg="red_detector" type="red_detector_node" output="screen"/>
-</launch>

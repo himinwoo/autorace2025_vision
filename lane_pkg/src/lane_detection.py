@@ -96,16 +96,8 @@ class LaneDetection:
         # 원본 이미지 복사 (정지선 감지용)
         stopline_img = self.img.copy()
         
-        # ROI 마스크 생성 - 위쪽 50%를 검게 만들기 (차선 감지용)
-        roi_mask = np.zeros((y, x), dtype=np.uint8)
-        crop_height = y // 2
-        roi_mask[crop_height:, :] = 255  # 아래쪽 50%만 흰색으로
-        
-        # 원본 이미지에 ROI 마스크 적용 (차선 감지용)
-        masked_img = cv2.bitwise_and(self.img, self.img, mask=roi_mask)
-        
         # 1. 이미지 전처리 - HSV 변환 및 색상 필터링
-        self.img_hsv = cv2.cvtColor(masked_img, cv2.COLOR_BGR2HSV)
+        self.img_hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
         
         # 노란색 차선 감지
         yellow_lower = np.array([10, 50, 50])
@@ -130,36 +122,11 @@ class LaneDetection:
         combined_range = cv2.morphologyEx(combined_range, cv2.MORPH_OPEN, kernel)   # 작은 노이즈 제거
         
         result = combined_range
-        filtered_img = cv2.bitwise_and(masked_img, masked_img, mask=result)
+        filtered_img = cv2.bitwise_and(self.img, self.img, mask=result)
         
-        # 2. 원근 변환 - 버드아이 뷰로 변환
-        # 소스 포인트 설정 (원본 이미지에서의 사다리꼴 영역)
-        # 640x480 해상도에 맞게 조정
-        S_Upper_X = 171
-        S_Upper_Y = 240
-        S_Lower_X = 0
-        S_Lower_Y = 58
-        
-        src_point1 = [0 + S_Lower_X, 480 - S_Lower_Y]      # 왼쪽 아래
-        src_point2 = [0 + S_Upper_X, 0 + S_Upper_Y]        # 왼쪽 위
-        src_point3 = [640 - S_Upper_X, 0 + S_Upper_Y]      # 오른쪽 위 (640 - 180 = 460)
-        src_point4 = [640 - S_Lower_X, 480 - S_Lower_Y]    # 오른쪽 아래
-        
-        src_points = np.float32([src_point1, src_point2, src_point3, src_point4])
-        
-        # 목적지 포인트 설정 (변환된 이미지에서의 직사각형 영역)
-        # 640x480 해상도에 맞게 조정
-        D_Upper_X = 182
-        D_Upper_Y = 88
-        D_Lower_X = 207
-        D_Lower_Y = 0
-        
-        dst_point1 = [0 + D_Lower_X, 480 - D_Lower_Y]      # 왼쪽 아래 (165, 480)
-        dst_point2 = [0 + D_Upper_X, 0 + D_Upper_Y]        # 왼쪽 위 (125, 0)
-        dst_point3 = [640 - D_Upper_X, 0 + D_Upper_Y]      # 오른쪽 위 (515, 0)
-        dst_point4 = [640 - D_Lower_X, 480 - D_Lower_Y]    # 오른쪽 아래 (475, 480)
-        
-        dst_points = np.float32([dst_point1, dst_point2, dst_point3, dst_point4])
+        # 2. 원근 변환 - 버드아이 뷰로 변환 (result_gazebo.py와 동일한 좌표 사용)
+        src_points = np.float32([[90, 361-35], [0, 361], [640, 361], [640 - 90, 361 - 35]])
+        dst_points = np.float32([[0, y], [0, 0], [x, 0], [x, y]])
         
         # 변환 행렬 계산 및 적용
         matrix = cv2.getPerspectiveTransform(src_points, dst_points)
@@ -167,8 +134,12 @@ class LaneDetection:
         self.grayed_img = cv2.cvtColor(self.warped_img, cv2.COLOR_BGR2GRAY)
         
         # 3. 이미지 이진화 - 차선 픽셀 추출
-        self.bin_img = np.zeros_like(self.grayed_img)
-        self.bin_img[self.grayed_img > 60] = 1  # 밝기가 60 이상인 픽셀만 선택
+        full_bin_img = np.zeros_like(self.grayed_img)
+        full_bin_img[self.grayed_img > 60] = 1  # 밝기가 60 이상인 픽셀만 선택
+        
+        # 3-1. 이진화 이미지의 아래 50%만 크롭 (슬라이딩 윈도우용)
+        crop_height = full_bin_img.shape[0] // 2
+        self.bin_img = full_bin_img[crop_height:, :]
         
         # 4. 정지선 감지 (원본 이미지 별도 처리)
         # 정지선 감지용 이미지 전처리
@@ -207,7 +178,7 @@ class LaneDetection:
             self.bin_img, 
             lane_mode=0
         )
-        pid = PID(0.020, 0.01, 0.010)  # PID 파라미터
+        pid = PID(0.20, 0.01, 0.010)  # PID 파라미터
         
         # 정지선 표시 (디버깅용)
         self.stopline_detector.draw_stopline(self.out_img, stopline_indices)

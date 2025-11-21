@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Sign Recognizer Node -->
+    <node pkg="sign_detector" type="sign_recognizer_node.py" name="sign_recognizer_node" output="screen">
+        <!-- 파라미터 설정 (필요시 수정 가능) -->
+        <!-- <param name="min_area" value="500"/> -->
+        <!-- <param name="input_topic" value="/usb_cam/image_rect_color"/> -->
+        <!-- <param name="output_topic" value="/sign/direction"/> -->
+    </node>
+    
+    <!-- 디버깅을 위한 rqt_image_view (필요시 주석 해제) -->
+    <!-- <node pkg="rqt_image_view" type="rqt_image_view" name="image_viewer" /> -->
+</launch>

@@ -1,0 +1,7 @@
+<launch>
+  <!-- Camera Merger Node -->
+  <node name="camera_merger_node" pkg="camera_merger" type="camera_merger_node" output="screen">
+    <!-- 발행 주기 (Hz) -->
+    <param name="publish_rate" value="20.0" />
+  </node>
+</launch>

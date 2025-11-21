@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>camera_merger</name>
+  <version>0.0.1</version>
+  <description>Merge multiple Coss messages from different camera-related packages into a single /camera topic</description>
+
+  <maintainer email="kuuve@todo.todo">kuuve</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <depend>roscpp</depend>
+  <depend>coss_msgs</depend>
+
+  <export>
+  </export>
+</package>
