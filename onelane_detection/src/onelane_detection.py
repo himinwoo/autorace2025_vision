@@ -107,14 +107,18 @@ class ImageProcessor:
         Returns:
             hsv_img: 차선 색상만 추출된 이미지
         """
+        # 가우시안 블러로 노이즈 제거 (원본 이미지에 적용)
+        blur = cv2.GaussianBlur(warped_img, (5, 5), 0)
         # BGR을 HSV 색상 공간으로 변환
-        cvt_hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-        # 가우시안 블러로 노이즈 제거
-        blur = cv2.GaussianBlur(cvt_hsv, (5, 5), 0)
+        cvt_hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
         # HSV 임계값 범위 내의 픽셀만 마스크로 선택
-        mask = cv2.inRange(blur, self.hsv_lower, self.hsv_upper)
+        mask = cv2.inRange(cvt_hsv, self.hsv_lower, self.hsv_upper)
         # 원본 이미지에 마스크를 적용하여 차선만 추출
         hsv_img = cv2.bitwise_and(warped_img, warped_img, mask=mask)
+        # 모폴로지 연산으로 노이즈 제거 및 객체 보강
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        hsv_img = cv2.morphologyEx(hsv_img, cv2.MORPH_CLOSE, kernel)  # Closing: 작은 구멍 메우기
+        hsv_img = cv2.morphologyEx(hsv_img, cv2.MORPH_OPEN, kernel)   # Opening: 작은 노이즈 제거
         return hsv_img
 
     def crop_img(self, hsv_img):

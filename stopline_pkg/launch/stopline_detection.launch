@@ -12,7 +12,7 @@
     <param name="show_debug_image" value="true" />
     
     <!-- 밝기 임계값 파라미터 (그레이스케일 기반) -->
-    <param name="white_threshold" value="100" />
+    <param name="white_threshold" value="110" />
     <param name="histogram_threshold" value="500" />
   </node>
 </launch>

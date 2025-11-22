@@ -9,7 +9,7 @@
         <param name="cmd_topic" value="/camera/steering" />
 `
         <!-- 차선 선택: "left" 또는 "right" -->
-        <param name="lane_side" value="right" />
+        <param name="lane_side" value="left" />
         
         <!-- Sliding Window 알고리즘 파라미터 -->
         <param name="window_num" value="12" />
@@ -17,14 +17,14 @@
         <param name="crop_start_ratio" value="0.5" />
         
         <!-- HSV 색상 필터링 임계값 (노란색 차선 기준) -->
-        <rosparam param="hsv_lower">[20, 130, 100]</rosparam>
-        <rosparam param="hsv_upper">[40, 160, 140]</rosparam>
+        <rosparam param="hsv_lower">[0, 40, 50]</rosparam>
+        <rosparam param="hsv_upper">[26, 110, 255]</rosparam>
         
         <!-- 조향 기준점 비율 (0.0~1.0) -->
-        <param name="steering_ratio" value="0.8" />
+        <!-- <param name="steering_ratio" value="0.8" /> -->
         <!-- 왼쪽/오른쪽 차선별 개별 설정 (옵션) -->
-        <!-- <param name="steering_ratio_left" value="0.8" /> -->
-        <!-- <param name="steering_ratio_right" value="0.8" /> -->
+        <param name="steering_ratio_left" value="0.3" />
+        <param name="steering_ratio_right" value="0.7" />
         
         <!-- 조향 게인 -->
         <!-- 통합 게인 (설정 시 좌우 구분 무시) -->
