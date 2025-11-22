@@ -87,10 +87,32 @@ class StopLineDetectionNode:
         # 그레이스케일 변환
         stopline_gray = cv2.cvtColor(stopline_img, cv2.COLOR_BGR2GRAY)
         
-        # 흰색 정지선 감지 (밝기 임계값 사용)
-        # 그레이스케일에서 밝은 영역(흰색)만 추출
-        stopline_bin = np.zeros_like(stopline_gray)
-        stopline_bin[stopline_gray >= self.white_threshold] = 1
+        # 블러링으로 노이즈 제거 (빛 반사 완화)
+        stopline_gray_blurred = cv2.GaussianBlur(stopline_gray, (5, 5), 0)
+        
+        # 방법 1: CLAHE + Otsu (조명 변화에 강함)
+        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8,8))  # clipLimit 낮춤 (2.0 -> 1.5)
+        enhanced = clahe.apply(stopline_gray_blurred)
+        
+        # Otsu 임계값 계산
+        otsu_thresh, stopline_bin_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Otsu 임계값을 높여서 더 밝은 영역만 선택 (둔감하게)ㅎ
+        adjusted_thresh = otsu_thresh + 20  # Otsu 결과에 +20 추가
+        _, stopline_bin_otsu_adjusted = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
+        
+        # 방법 2: 에지 검출 (정지선 경계 강조) - 임계값 높임
+        edges = cv2.Canny(stopline_gray_blurred, 100, 200)  # 50,150 -> 100,200 (둔감하게)
+        
+        # 에지를 두껍게 만들어 히스토그램에서 감지 용이하게
+        kernel = np.ones((3, 3), np.uint8)
+        edges_dilated = cv2.dilate(edges, kernel, iterations=2)
+        
+        # Otsu 결과와 에지 결합
+        stopline_bin_combined = cv2.bitwise_or(stopline_bin_otsu_adjusted, edges_dilated)
+        
+        # 0과 1로 정규화
+        stopline_bin = (stopline_bin_combined > 0).astype(np.uint8)
         
         # 정지선 감지 수행
         detected, stopline_indices, stopline_count = self.stopline_detector.detect(stopline_bin)
@@ -127,10 +149,12 @@ class StopLineDetectionNode:
             # 이진화 이미지를 시각화 (0과 1을 0과 255로 변환)
             stopline_bin_visual = (stopline_bin * 255).astype(np.uint8)
             
-            # 이미지 출력
+            # 이미지 출력 (디버깅용 추가)
             cv2.imshow("Stopline Detection", debug_img)
             cv2.imshow("Stopline Binary", stopline_bin_visual)
-            cv2.imshow("Stopline Grayscale", stopline_gray)
+            cv2.imshow("Stopline CLAHE+Otsu", stopline_bin_otsu_adjusted)
+            cv2.imshow("Stopline Edges", edges_dilated)
+            cv2.imshow("Stopline Enhanced", enhanced)
             cv2.waitKey(1)
     
     def image_callback(self, msg):
