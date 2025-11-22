@@ -8,11 +8,11 @@
     <param name="down_hist_start_line" value="0" />  <!-- 크롭된 이미지 전체 검색 -->
     <param name="stopline_threshold" value="10" />
     <param name="count_threshold" value="10" />
-    <param name="cooldown_duration" value="3.0" />
+    <param name="cooldown_duration" value="6.0" />
     <param name="show_debug_image" value="true" />
     
     <!-- 밝기 임계값 파라미터 (그레이스케일 기반) -->
     <param name="white_threshold" value="100" />
-    <param name="histogram_threshold" value="600" />
+    <param name="histogram_threshold" value="500" />
   </node>
 </launch>

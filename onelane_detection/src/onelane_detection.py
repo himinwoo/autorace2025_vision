@@ -87,9 +87,11 @@ class ImageProcessor:
             warped_img: 원근 변환된 이미지 (위에서 내려다본 시점)
         """
         # 원본 이미지에서 변환할 4개의 점 (사다리꼴 형태)
+        # 순서: 좌상단 → 좌하단 → 우하단 → 우상단
         src_points = np.float32([[90, 361 - 35], [0, 361], [640, 361], [640 - 90, 361 - 35]])
         # 변환 후 목적지 점 (직사각형 형태로 펼침)
-        dst_points = np.float32([[0, cv_img.shape[0]], [0, 0], [cv_img.shape[1], 0], [cv_img.shape[1], cv_img.shape[0]]])
+        # src_points와 동일한 순서: 좌상단 → 좌하단 → 우하단 → 우상단
+        dst_points = np.float32([[0, 0], [0, cv_img.shape[0]], [cv_img.shape[1], cv_img.shape[0]], [cv_img.shape[1], 0]])
         # 변환 행렬 계산
         matrix = cv2.getPerspectiveTransform(src_points, dst_points)
         # 원근 변환 적용

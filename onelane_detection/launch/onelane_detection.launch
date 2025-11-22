@@ -17,8 +17,8 @@
         <param name="crop_start_ratio" value="0.5" />
         
         <!-- HSV 색상 필터링 임계값 (노란색 차선 기준) -->
-        <rosparam param="hsv_lower">[10, 50, 50]</rosparam>
-        <rosparam param="hsv_upper">[40, 255, 255]</rosparam>
+        <rosparam param="hsv_lower">[20, 130, 100]</rosparam>
+        <rosparam param="hsv_upper">[40, 160, 140]</rosparam>
         
         <!-- 조향 기준점 비율 (0.0~1.0) -->
         <param name="steering_ratio" value="0.8" />
