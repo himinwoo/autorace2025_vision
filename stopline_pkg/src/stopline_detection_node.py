@@ -30,9 +30,16 @@ class StopLineDetectionNode:
         # 이미지 크롭 파라미터
         self.crop_top = rospy.get_param('~crop_top', 280)  # 크롭 시작 위치 (위에서부터)
         
-        # 흰색 정지선 감지를 위한 밝기 임계값 파라미터
-        self.white_threshold = rospy.get_param('~white_threshold', 200)
+        # 히스토그램 임계값 파라미터
         self.histogram_threshold = rospy.get_param('~histogram_threshold', 600)
+        
+        # 허프 변환 파라미터
+        self.use_hough = rospy.get_param('~use_hough', True)
+        self.hough_threshold = rospy.get_param('~hough_threshold', 120)
+        self.hough_min_line_length = rospy.get_param('~hough_min_line_length', 150)
+        self.hough_max_line_gap = rospy.get_param('~hough_max_line_gap', 100)
+        self.hough_angle_threshold = rospy.get_param('~hough_angle_threshold', 30)
+        self.hough_width_ratio = rospy.get_param('~hough_width_ratio', 0.3)
 
         # 퍼블리셔 설정
         self.coss_pub = rospy.Publisher('/camera/stopline/count', Coss, queue_size=1)
@@ -53,7 +60,13 @@ class StopLineDetectionNode:
             down_hist_start_line=self.down_hist_start_line,
             stopline_threshold=self.stopline_threshold,
             count_threshold=self.count_threshold,
-            histogram_threshold=self.histogram_threshold
+            histogram_threshold=self.histogram_threshold,
+            use_hough=self.use_hough,
+            hough_threshold=self.hough_threshold,
+            hough_min_line_length=self.hough_min_line_length,
+            hough_max_line_gap=self.hough_max_line_gap,
+            hough_angle_threshold=self.hough_angle_threshold,
+            hough_width_ratio=self.hough_width_ratio
         )
         
         # 정지선 감지 쿨다운 설정
@@ -67,8 +80,13 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - count_threshold: {self.count_threshold}")
         rospy.loginfo(f"  - cooldown_duration: {self.cooldown_duration}s")
         rospy.loginfo(f"  - show_debug_image: {self.show_debug_image}")
-        rospy.loginfo(f"  - white_threshold: {self.white_threshold}")
         rospy.loginfo(f"  - histogram_threshold: {self.histogram_threshold}")
+        rospy.loginfo(f"  - use_hough: {self.use_hough}")
+        rospy.loginfo(f"  - hough_threshold: {self.hough_threshold}")
+        rospy.loginfo(f"  - hough_min_line_length: {self.hough_min_line_length}")
+        rospy.loginfo(f"  - hough_max_line_gap: {self.hough_max_line_gap}")
+        rospy.loginfo(f"  - hough_angle_threshold: {self.hough_angle_threshold}")
+        rospy.loginfo(f"  - hough_width_ratio: {self.hough_width_ratio}")
         
         # 메인 루프
         rate = rospy.Rate(20)  # 20Hz
@@ -96,9 +114,9 @@ class StopLineDetectionNode:
         
         # Otsu 임계값 계산
         otsu_thresh, stopline_bin_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Otsu 임계값을 높여서 더 밝은 영역만 선택 (둔감하게)ㅎ
-        adjusted_thresh = otsu_thresh + 20  # Otsu 결과에 +20 추가
+
+        # Otsu 임계값을 높여서 더 밝은 영역만 선택 (둔감하게)
+        adjusted_thresh = otsu_thresh + 40  # Otsu 결과에 +40 추가
         _, stopline_bin_otsu_adjusted = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
         
         # 방법 2: 에지 검출 (정지선 경계 강조) - 임계값 높임

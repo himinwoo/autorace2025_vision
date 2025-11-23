@@ -2,17 +2,24 @@
   <!-- Stopline Detection Node -->
   <node name="stopline_detection_node" pkg="stopline_pkg" type="stopline_detection_node.py" output="screen">
     <!-- 이미지 크롭 파라미터 -->
-    <param name="crop_top" value="280" />  <!-- 상단 280픽셀 제거 (480p 기준) -->
+    <param name="crop_top" value="280" />
     
     <!-- 정지선 감지 파라미터 -->
-    <param name="down_hist_start_line" value="0" />  <!-- 크롭된 이미지 전체 검색 -->
-    <param name="stopline_threshold" value="10" />
-    <param name="count_threshold" value="10" />
+    <param name="down_hist_start_line" value="0" />
+    <param name="stopline_threshold" value="15" />
+    <param name="count_threshold" value="5" />
     <param name="cooldown_duration" value="6.0" />
     <param name="show_debug_image" value="true" />
     
-    <!-- 밝기 임계값 파라미터 (그레이스케일 기반) -->
-    <param name="white_threshold" value="110" />
-    <param name="histogram_threshold" value="500" />
+    <!-- 히스토그램 임계값 파라미터 -->
+    <param name="histogram_threshold" value="300" />
+    
+    <!-- 허프 변환 파라미터 (대각선 정지선 감지용) -->
+    <param name="use_hough" value="false" />
+    <param name="hough_threshold" value="150" />
+    <param name="hough_min_line_length" value="150" />
+    <param name="hough_max_line_gap" value="10" />
+    <param name="hough_angle_threshold" value="25" />
+    <param name="hough_width_ratio" value="0.3" />
   </node>
 </launch>
