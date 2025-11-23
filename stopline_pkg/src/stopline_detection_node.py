@@ -24,7 +24,7 @@ class StopLineDetectionNode:
         self.down_hist_start_line = rospy.get_param('~down_hist_start_line', 0)
         self.stopline_threshold = rospy.get_param('~stopline_threshold', 10)
         self.count_threshold = rospy.get_param('~count_threshold', 10)
-        self.cooldown_duration = rospy.get_param('~cooldown_duration', 3.0)
+        self.cooldown_durations = rospy.get_param('~cooldown_durations', [6.0])  # mission_state별 쿨다운 시간 리스트
         self.show_debug_image = rospy.get_param('~show_debug_image', False)
         
         # 이미지 크롭 파라미터
@@ -81,7 +81,7 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - down_hist_start_line: {self.down_hist_start_line}")
         rospy.loginfo(f"  - stopline_threshold: {self.stopline_threshold}")
         rospy.loginfo(f"  - count_threshold: {self.count_threshold}")
-        rospy.loginfo(f"  - cooldown_duration: {self.cooldown_duration}s")
+        rospy.loginfo(f"  - cooldown_durations: {self.cooldown_durations}")
         rospy.loginfo(f"  - show_debug_image: {self.show_debug_image}")
         rospy.loginfo(f"  - histogram_threshold: {self.histogram_threshold}")
         rospy.loginfo(f"  - otsu_threshold_offset: {self.otsu_threshold_offset}")
@@ -189,6 +189,7 @@ class StopLineDetectionNode:
     def can_detect(self):
         """
         정지선 감지 가능 여부를 확인 (쿨다운 체크)
+        mission_state에 따라 다른 쿨다운 시간 적용
         
         Returns:
             bool: 감지 가능하면 True, 쿨다운 중이면 False
@@ -196,12 +197,20 @@ class StopLineDetectionNode:
         current_time = rospy.get_time()
         time_since_last_detection = current_time - self.last_detection_time
         
+        # 현재 mission_state에 해당하는 쿨다운 시간 가져오기
+        # mission_state가 리스트 길이를 초과하면 마지막 값 사용
+        current_state = self.coss_msg.mission_state
+        if current_state < len(self.cooldown_durations):
+            cooldown_duration = self.cooldown_durations[current_state]
+        else:
+            cooldown_duration = self.cooldown_durations[-1]  # 마지막 값 사용
+        
         # 쿨다운 시간이 지났는지 확인
-        if time_since_last_detection >= self.cooldown_duration:
+        if time_since_last_detection >= cooldown_duration:
             return True
         else:
-            remaining_time = self.cooldown_duration - time_since_last_detection
-            rospy.logdebug(f"정지선 감지 쿨다운 중... 남은 시간: {remaining_time:.1f}초")
+            remaining_time = cooldown_duration - time_since_last_detection
+            rospy.logdebug(f"정지선 감지 쿨다운 중 (state {current_state})... 남은 시간: {remaining_time:.1f}초")
             return False
 
 if __name__ == "__main__":
