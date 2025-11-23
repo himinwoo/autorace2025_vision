@@ -9,7 +9,7 @@
         <param name="cmd_topic" value="/camera/steering" />
 `
         <!-- 차선 선택: "left" 또는 "right" -->
-        <param name="lane_side" value="left" />
+        <param name="lane_side" value="right" />
         
         <!-- Sliding Window 알고리즘 파라미터 -->
         <param name="window_num" value="12" />
@@ -17,8 +17,12 @@
         <param name="crop_start_ratio" value="0.5" />
         
         <!-- HSV 색상 필터링 임계값 (노란색 차선 기준) -->
-        <rosparam param="hsv_lower">[0, 85, 75]</rosparam>
-        <rosparam param="hsv_upper">[26, 110, 100]</rosparam>
+        <rosparam param="hsv_lower">[10, 50, 70]</rosparam>
+        <rosparam param="hsv_upper">[40, 255, 255]</rosparam>
+        
+        <!-- 적응형 이진화 파라미터 -->
+        <param name="adaptive_block_size" value="15" />
+        <param name="adaptive_c" value="-2" />
         
         <!-- 조향 기준점 비율 (0.0~1.0) -->
         <!-- <param name="steering_ratio" value="0.8" /> -->
@@ -38,5 +42,9 @@
         
         <!-- 디버그 창 표시 여부 -->
         <param name="show_debug" value="true" />
+        
+        <!-- mission_state별 차선 방향 매핑 (옵션) -->
+        <!-- 예: state 0,2,4는 오른쪽, state 1,3,5는 왼쪽 차선 감지 -->
+        <rosparam param="lane_direction_map">{"0": "right", "1": "left", "2": "right", "3": "left", "4": "right", "5": "left"}</rosparam>
     </node>
 </launch>

@@ -40,10 +40,18 @@ class ImageProcessor:
             rospy.logwarn("lane_side must be 'left' or 'right'. Falling back to 'left'.")
             lane_side_param = "left"
         self.use_left_lane = lane_side_param == "left"
+        
+        # mission_state별 차선 방향 매핑 (key: mission_state, value: "left" or "right")
+        # 예: {0: "right", 1: "left", 2: "right"} -> state 0,2는 오른쪽, state 1은 왼쪽
+        self.lane_direction_map = rospy.get_param("~lane_direction_map", {})
+        self.current_mission_state = 0  # 현재 mission_state 저장
 
         # 카메라 제어 명령 발행 토픽 설정
         self.cmd_topic = rospy.get_param("~cmd_topic", "/camera")
         self.pub = rospy.Publisher(self.cmd_topic, Coss, queue_size=1)
+        
+        # /camera 토픽 구독 (mission_state 수신용)
+        rospy.Subscriber("/camera", Coss, self.camera_state_CB)
 
         # Sliding Window 알고리즘 파라미터
         self.window_num = int(rospy.get_param("~window_num", 12))  # 윈도우 개수
@@ -52,8 +60,13 @@ class ImageProcessor:
         self.crop_start_ratio = min(max(self.crop_start_ratio, 0.0), 0.95)
 
         # HSV 색상 필터링 임계값 (차선 색상 검출용)
-        self.hsv_lower = np.array(rospy.get_param("~hsv_lower", [10, 50, 50]), dtype=np.uint8)
-        self.hsv_upper = np.array(rospy.get_param("~hsv_upper", [40, 255, 255]), dtype=np.uint8)
+        # 노란색 범위: H(20-30), S(80-255), V(100-255)
+        self.hsv_lower = np.array(rospy.get_param("~hsv_lower", [20, 80, 100]), dtype=np.uint8)
+        self.hsv_upper = np.array(rospy.get_param("~hsv_upper", [30, 255, 255]), dtype=np.uint8)
+        
+        # 적응형 이진화 파라미터
+        self.adaptive_block_size = int(rospy.get_param("~adaptive_block_size", 15))  # 블록 크기 (홀수)
+        self.adaptive_c = int(rospy.get_param("~adaptive_c", -2))  # 임계값 조정 상수
 
         # 조향 기준점 비율 (crop된 이미지 너비에 대한 비율)
         ratio_default = float(rospy.get_param("~steering_ratio", 0.8))
@@ -99,7 +112,7 @@ class ImageProcessor:
         return warped_img
 
     def apply_mask(self, warped_img):
-        """HSV 색상 공간에서 차선 색상만 추출
+        """HSV 색상 공간에서 차선 색상만 추출 (적응형 이진화 적용)
         
         Args:
             warped_img: 원근 변환된 이미지
@@ -111,14 +124,42 @@ class ImageProcessor:
         blur = cv2.GaussianBlur(warped_img, (5, 5), 0)
         # BGR을 HSV 색상 공간으로 변환
         cvt_hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-        # HSV 임계값 범위 내의 픽셀만 마스크로 선택
-        mask = cv2.inRange(cvt_hsv, self.hsv_lower, self.hsv_upper)
-        # 원본 이미지에 마스크를 적용하여 차선만 추출
-        hsv_img = cv2.bitwise_and(warped_img, warped_img, mask=mask)
-        # 모폴로지 연산으로 노이즈 제거 및 객체 보강
+        
+        # 1. 노란색 범위 마스킹
+        yellow_mask = cv2.inRange(cvt_hsv, self.hsv_lower, self.hsv_upper)
+        
+        # 2. V(밝기) 채널 적응형 이진화
+        v_channel = cvt_hsv[:, :, 2]
+        # 블록 크기는 반드시 홀수여야 함
+        block_size = self.adaptive_block_size if self.adaptive_block_size % 2 == 1 else self.adaptive_block_size + 1
+        adaptive_threshold = cv2.adaptiveThreshold(
+            v_channel, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            block_size, self.adaptive_c
+        )
+        
+        # 3. 두 결과의 AND 연산 (노란색 + 밝은 영역)
+        combined_mask = cv2.bitwise_and(adaptive_threshold, yellow_mask)
+        
+        # 4. 에지 팽창 (dilation)으로 차선을 두껍게 만들어 검출 용이하게 함
+        kernel_dilate = np.ones((3, 3), np.uint8)
+        combined_mask = cv2.dilate(combined_mask, kernel_dilate, iterations=2)
+        
+        # 5. 원본 이미지에 마스크 적용
+        hsv_img = cv2.bitwise_and(warped_img, warped_img, mask=combined_mask)
+        
+        # 6. 모폴로지 연산으로 노이즈 제거 및 객체 보강
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         hsv_img = cv2.morphologyEx(hsv_img, cv2.MORPH_CLOSE, kernel)  # Closing: 작은 구멍 메우기
         hsv_img = cv2.morphologyEx(hsv_img, cv2.MORPH_OPEN, kernel)   # Opening: 작은 노이즈 제거
+        
+        # 디버그: 각 단계별 결과 표시
+        if self.show_debug:
+            cv2.imshow("debug_1_yellow_mask", yellow_mask)
+            cv2.imshow("debug_2_adaptive", adaptive_threshold)
+            cv2.imshow("debug_3_combined", combined_mask)
+        
         return hsv_img
 
     def crop_img(self, hsv_img):
@@ -422,6 +463,27 @@ class ImageProcessor:
         """
         self.img_msg = msg
         self.cam_flag = True
+    
+    def camera_state_CB(self, msg):
+        """카메라 상태 토픽 콜백 - mission_state에 따라 차선 방향 변경
+        
+        Args:
+            msg: Coss 메시지 (mission_state 포함)
+        """
+        self.current_mission_state = msg.mission_state
+        
+        # mission_state를 문자열로 변환하여 매핑 검색
+        state_key = str(self.current_mission_state)
+        
+        if state_key in self.lane_direction_map:
+            new_direction = self.lane_direction_map[state_key].lower()
+            
+            if new_direction == "left" and not self.use_left_lane:
+                self.use_left_lane = True
+                rospy.loginfo(f"[State {self.current_mission_state}] 차선 방향 변경: RIGHT -> LEFT")
+            elif new_direction == "right" and self.use_left_lane:
+                self.use_left_lane = False
+                rospy.loginfo(f"[State {self.current_mission_state}] 차선 방향 변경: LEFT -> RIGHT")
 
     def run(self):
         """메인 루프: sense-think-act 사이클 실행"""
