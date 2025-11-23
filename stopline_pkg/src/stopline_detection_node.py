@@ -19,6 +19,14 @@ class StopLineDetectionNode:
     """
     def __init__(self):
         rospy.init_node("stopline_detection_node")
+        
+        # 로그 레벨 설정
+        log_level = rospy.get_param('~log_level', 'info')
+        if log_level.lower() == 'debug':
+            rospy.loginfo("Setting log level to DEBUG")
+            import logging
+            logger = logging.getLogger('rosout')
+            logger.setLevel(logging.DEBUG)
 
         # 파라미터 로드
         self.down_hist_start_line = rospy.get_param('~down_hist_start_line', 0)
@@ -55,9 +63,14 @@ class StopLineDetectionNode:
         # Coss 메시지 초기화
         self.coss_msg = Coss()
         self.coss_msg.mission_state = 0
+        
+        # Lidar flag 관련 변수
+        self.lidar_flag = False
+        self.lidar_cooldown_started = False  # state 6에서 쿨다운 시작 여부
 
         # 서브스크라이버 설정
         rospy.Subscriber("/usb_cam/image_rect_color", Image, self.image_callback)
+        rospy.Subscriber("/lidar", Coss, self.lidar_callback)  # Coss 메시지 구독 추가
 
         # 변수 초기화
         self.bridge = CvBridge()
@@ -78,7 +91,7 @@ class StopLineDetectionNode:
         )
         
         # 정지선 감지 쿨다운 설정
-        self.last_detection_time = 0.0  # 마지막 정지선 감지 시간
+        self.last_detection_time = 0.0  # 마지막 정지선 감지 시간 (또는 쿨다운 시작 시간)
         
         rospy.loginfo("===== Stopline Detection Node Started =====")
         rospy.loginfo(f"Parameters:")
@@ -248,32 +261,100 @@ class StopLineDetectionNode:
         """
         self.img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
     
+    def lidar_callback(self, msg):
+        """
+        /lidar 토픽 콜백 함수
+        Coss 메시지에서 lidar_flag를 저장합니다.
+        state 6에서 lidar_flag가 false→true로 전환되면 쿨다운을 시작합니다.
+        """
+        prev_flag = self.lidar_flag
+        self.lidar_flag = msg.lidar_flag
+        
+        # state 6에서만 lidar_flag 전환 감지
+        if self.coss_msg.mission_state == 6:
+            self._handle_state6_lidar_transition(prev_flag)
+        
+        rospy.logdebug(f"Received lidar_flag: {self.lidar_flag}")
+    
+    def _handle_state6_lidar_transition(self, prev_flag):
+        """
+        state 6에서 lidar_flag 전환 처리
+        false→true 전환 시 쿨다운 타이머를 시작합니다.
+        Args:
+            prev_flag: 이전 lidar_flag 값
+        """
+        # 이미 쿨다운이 시작되었으면 무시
+        if self.lidar_cooldown_started:
+            return
+        
+        # false에서 true로 전환되는 순간 감지
+        if self.lidar_flag and not prev_flag:
+            self.lidar_cooldown_started = True
+            self.last_detection_time = rospy.get_time()
+            rospy.loginfo("[State 6] 라이다 감지 → 쿨다운 시작")
+    
     def can_detect(self):
         """
         정지선 감지 가능 여부를 확인 (쿨다운 체크)
-        mission_state에 따라 다른 쿨다운 시간 적용
+        
+        state 6: 라이다 감지 후 쿨다운이 시작되어야 감지 가능
+        기타 state: 이전 감지 시점부터 쿨다운 경과 후 감지 가능
         
         Returns:
-            bool: 감지 가능하면 True, 쿨다운 중이면 False
+            bool: 감지 가능하면 True, 불가능하면 False
+        """
+        current_state = self.coss_msg.mission_state
+        
+        # state 6 특수 처리: 라이다 쿨다운이 시작되지 않았으면 감지 불가
+        if current_state == 6 and not self.lidar_cooldown_started:
+            rospy.logdebug("[State 6] 라이다 감지 대기 중...")
+            return False
+        
+        # 쿨다운 시간 확인
+        return self._is_cooldown_complete(current_state)
+    
+    def _is_cooldown_complete(self, current_state):
+        """
+        쿨다운이 완료되었는지 확인
+        
+        Args:
+            current_state: 현재 mission_state
+            
+        Returns:
+            bool: 쿨다운이 완료되었으면 True, 아니면 False
         """
         current_time = rospy.get_time()
-        time_since_last_detection = current_time - self.last_detection_time
+        elapsed_time = current_time - self.last_detection_time
         
-        # 현재 mission_state에 해당하는 쿨다운 시간 가져오기
-        # mission_state가 리스트 길이를 초과하면 마지막 값 사용
-        current_state = self.coss_msg.mission_state
-        if current_state < len(self.cooldown_durations):
-            cooldown_duration = self.cooldown_durations[current_state]
-        else:
-            cooldown_duration = self.cooldown_durations[-1]  # 마지막 값 사용
+        # 현재 state에 해당하는 쿨다운 시간 가져오기
+        cooldown_duration = self._get_cooldown_duration(current_state)
         
-        # 쿨다운 시간이 지났는지 확인
-        if time_since_last_detection >= cooldown_duration:
+        # 쿨다운 완료 여부 확인
+        if elapsed_time >= cooldown_duration:
             return True
         else:
-            remaining_time = cooldown_duration - time_since_last_detection
-            rospy.logdebug(f"정지선 감지 쿨다운 중 (state {current_state})... 남은 시간: {remaining_time:.1f}초")
+            remaining_time = cooldown_duration - elapsed_time
+            rospy.logdebug(
+                f"[State {current_state}] 쿨다운 진행 중... "
+                f"남은 시간: {remaining_time:.1f}초"
+            )
             return False
+    
+    def _get_cooldown_duration(self, state):
+        """
+        주어진 state에 해당하는 쿨다운 시간을 반환
+        
+        Args:
+            state: mission_state 값
+            
+        Returns:
+            float: 쿨다운 시간(초)
+        """
+        if state < len(self.cooldown_durations):
+            return self.cooldown_durations[state]
+        else:
+            # state가 리스트 범위를 벗어나면 마지막 값 사용
+            return self.cooldown_durations[-1]
 
 if __name__ == "__main__":
     try: 

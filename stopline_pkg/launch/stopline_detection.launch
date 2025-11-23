@@ -8,8 +8,8 @@
     <param name="down_hist_start_line" value="0" />
     <param name="stopline_threshold" value="10" />
     <param name="count_threshold" value="5" />
-    <rosparam param="cooldown_durations">[3.0, 7.0, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
-    <param name="show_debug_image" value="true" />
+    <rosparam param="cooldown_durations">[3.0, 10.0, 1.0, 10.0, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
+    <param name="show_debug_image" value="false" />
     
     <!-- 히스토그램 임계값 파라미터 -->
     <param name="histogram_threshold" value="200" />
@@ -29,5 +29,6 @@
     <rosparam param="yellow_hsv_lower">[0, 40, 50]</rosparam>
     <rosparam param="yellow_hsv_upper">[26, 110, 255]</rosparam>
     <param name="yellow_state" value="9" />
+    <!-- <param name="log_level" value="debug"/> -->
   </node>
 </launch>
