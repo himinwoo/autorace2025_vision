@@ -22,8 +22,6 @@ class HSVExtractor:
     def mouse_callback(self, event, x, y, flags, param):
         if event == cv.EVENT_LBUTTONDOWN:
             if self.img_hsv is not None:
-                color_bgr = self.img_hsv[y, x]
-                print("BGR Color:", color_bgr)
                 print("HSV Color:", self.img_hsv[y, x])
 
     def run(self):
