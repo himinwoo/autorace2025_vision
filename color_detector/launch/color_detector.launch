@@ -5,7 +5,7 @@
     <!-- 픽셀 개수 임계값 -->
     <param name="red_threshold" value="50000"/>
     <param name="blue_threshold" value="50000"/>
-    <param name="debug_mode" value="true"/>
+    <param name="debug_mode" value="false"/>
     
     <!-- 빨간색 HSV 범위 (빨강은 HSV에서 0-10과 170-180에 걸쳐 있음) -->
     <rosparam param="red_hsv_lower1">[0, 80, 60]</rosparam>

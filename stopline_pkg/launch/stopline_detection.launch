@@ -24,5 +24,10 @@
     <param name="hough_max_line_gap" value="10" />
     <param name="hough_angle_threshold" value="25" />
     <param name="hough_width_ratio" value="0.3" />
+    
+    <!-- 노란색 정지선 감지 파라미터 (state 9용) -->
+    <rosparam param="yellow_hsv_lower">[0, 40, 50]</rosparam>
+    <rosparam param="yellow_hsv_upper">[26, 110, 255]</rosparam>
+    <param name="yellow_state" value="9" />
   </node>
 </launch>

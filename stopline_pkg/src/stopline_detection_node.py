@@ -43,6 +43,11 @@ class StopLineDetectionNode:
         self.hough_max_line_gap = rospy.get_param('~hough_max_line_gap', 100)
         self.hough_angle_threshold = rospy.get_param('~hough_angle_threshold', 30)
         self.hough_width_ratio = rospy.get_param('~hough_width_ratio', 0.3)
+        
+        # 노란색 정지선 감지 파라미터 (state 9용)
+        self.yellow_hsv_lower = rospy.get_param('~yellow_hsv_lower', [0, 40, 50])
+        self.yellow_hsv_upper = rospy.get_param('~yellow_hsv_upper', [26, 110, 255])
+        self.yellow_state = rospy.get_param('~yellow_state', 9)  # 노란색 감지할 state
 
         # 퍼블리셔 설정
         self.coss_pub = rospy.Publisher('/camera/stopline/count', Coss, queue_size=1)
@@ -91,6 +96,9 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - hough_max_line_gap: {self.hough_max_line_gap}")
         rospy.loginfo(f"  - hough_angle_threshold: {self.hough_angle_threshold}")
         rospy.loginfo(f"  - hough_width_ratio: {self.hough_width_ratio}")
+        rospy.loginfo(f"  - yellow_hsv_lower: {self.yellow_hsv_lower}")
+        rospy.loginfo(f"  - yellow_hsv_upper: {self.yellow_hsv_upper}")
+        rospy.loginfo(f"  - yellow_state: {self.yellow_state}")
         
         # 메인 루프
         rate = rospy.Rate(20)  # 20Hz
@@ -106,35 +114,11 @@ class StopLineDetectionNode:
         # 원본 이미지 복사 및 하단 크롭
         stopline_img = self.img[self.crop_top:, :].copy()  # 상단 crop_top 픽셀 제거
         
-        # 그레이스케일 변환
-        stopline_gray = cv2.cvtColor(stopline_img, cv2.COLOR_BGR2GRAY)
-        
-        # 블러링으로 노이즈 제거 (빛 반사 완화)
-        stopline_gray_blurred = cv2.GaussianBlur(stopline_gray, (5, 5), 0)
-        
-        # 방법 1: CLAHE + Otsu (조명 변화에 강함)
-        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8,8))  # clipLimit 낮춤 (2.0 -> 1.5)
-        enhanced = clahe.apply(stopline_gray_blurred)
-        
-        # Otsu 임계값 계산
-        otsu_thresh, stopline_bin_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Otsu 임계값을 조정하여 더 밝은 영역만 선택 (둔감하게)
-        adjusted_thresh = otsu_thresh + self.otsu_threshold_offset
-        _, stopline_bin_otsu_adjusted = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
-        
-        # 방법 2: 에지 검출 (정지선 경계 강조) - 임계값 높임
-        edges = cv2.Canny(stopline_gray_blurred, 100, 200)  # 50,150 -> 100,200 (둔감하게)
-        
-        # 에지를 두껍게 만들어 히스토그램에서 감지 용이하게
-        kernel = np.ones((3, 3), np.uint8)
-        edges_dilated = cv2.dilate(edges, kernel, iterations=2)
-        
-        # Otsu 결과와 에지 결합
-        stopline_bin_combined = cv2.bitwise_or(stopline_bin_otsu_adjusted, edges_dilated)
-        
-        # 0과 1로 정규화
-        stopline_bin = (stopline_bin_combined > 0).astype(np.uint8)
+        # state 9일 때는 노란색 필터링 적용
+        if self.coss_msg.mission_state == self.yellow_state:
+            stopline_bin = self.detect_yellow_stopline(stopline_img)
+        else:
+            stopline_bin = self.detect_white_stopline(stopline_img)
         
         # 정지선 감지 수행
         detected, stopline_indices, stopline_count = self.stopline_detector.detect(stopline_bin)
@@ -161,7 +145,10 @@ class StopLineDetectionNode:
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             
             # mission_state 표시
-            cv2.putText(debug_img, f"Mission State: {self.coss_msg.mission_state}", (10, 70), 
+            state_text = f"Mission State: {self.coss_msg.mission_state}"
+            if self.coss_msg.mission_state == self.yellow_state:
+                state_text += " (YELLOW)"
+            cv2.putText(debug_img, state_text, (10, 70), 
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
             
             if detected:
@@ -174,10 +161,85 @@ class StopLineDetectionNode:
             # 이미지 출력 (디버깅용 추가)
             cv2.imshow("Stopline Detection", debug_img)
             cv2.imshow("Stopline Binary", stopline_bin_visual)
-            cv2.imshow("Stopline CLAHE+Otsu", stopline_bin_otsu_adjusted)
-            cv2.imshow("Stopline Edges", edges_dilated)
-            cv2.imshow("Stopline Enhanced", enhanced)
             cv2.waitKey(1)
+    
+    def detect_yellow_stopline(self, img):
+        """
+        노란색 정지선 감지 (state 9용)
+        
+        Args:
+            img: BGR 이미지
+            
+        Returns:
+            stopline_bin: 이진화된 정지선 이미지 (0과 1)
+        """
+        # HSV 변환
+        img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        
+        # 노란색 마스크 생성
+        lower_yellow = np.array(self.yellow_hsv_lower, dtype=np.uint8)
+        upper_yellow = np.array(self.yellow_hsv_upper, dtype=np.uint8)
+        yellow_mask = cv2.inRange(img_hsv, lower_yellow, upper_yellow)
+        
+        # 가우시안 블러로 노이즈 제거
+        yellow_mask_blurred = cv2.GaussianBlur(yellow_mask, (5, 5), 0)
+        
+        # 모폴로지 연산으로 노이즈 제거 및 영역 보완
+        kernel = np.ones((5, 5), np.uint8)
+        yellow_mask_clean = cv2.morphologyEx(yellow_mask_blurred, cv2.MORPH_CLOSE, kernel)
+        yellow_mask_clean = cv2.morphologyEx(yellow_mask_clean, cv2.MORPH_OPEN, kernel)
+        
+        # 0과 1로 정규화
+        stopline_bin = (yellow_mask_clean > 0).astype(np.uint8)
+        
+        return stopline_bin
+    
+    def detect_white_stopline(self, img):
+        """
+        흰색 정지선 감지 (기존 방식)
+        
+        Args:
+            img: BGR 이미지
+            
+        Returns:
+            stopline_bin: 이진화된 정지선 이미지 (0과 1)
+        """
+        # 그레이스케일 변환
+        stopline_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # 블러링으로 노이즈 제거 (빛 반사 완화)
+        stopline_gray_blurred = cv2.GaussianBlur(stopline_gray, (5, 5), 0)
+        
+        # 방법 1: CLAHE + Otsu (조명 변화에 강함)
+        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8,8))  # clipLimit 낮춤 (2.0 -> 1.5)
+        enhanced = clahe.apply(stopline_gray_blurred)
+        
+        # Otsu 임계값 계산
+        otsu_thresh, stopline_bin_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Otsu 임계값을 조정하여 더 밝은 영역만 선택 (둔감하게)
+        adjusted_thresh = otsu_thresh + self.otsu_threshold_offset
+        _, stopline_bin_otsu_adjusted = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
+        
+        # 방법 2: 에지 검출 (정지선 경계 강조) - 임계값 높임
+        edges = cv2.Canny(stopline_gray_blurred, 100, 200)  # 50,150 -> 100,200 (둔감하게)
+        
+        # 에지를 두껍게 만들어 히스토그램에서 감지 용이하게
+        kernel = np.ones((3, 3), np.uint8)
+        edges_dilated = cv2.dilate(edges, kernel, iterations=2)
+        
+        # Otsu 결과와 에지 결합
+        stopline_bin_combined = cv2.bitwise_or(stopline_bin_otsu_adjusted, edges_dilated)
+        
+        # 모폴로지 연산으로 노이즈 제거 및 영역 보완
+        kernel = np.ones((5, 5), np.uint8)
+        stopline_bin_clean = cv2.morphologyEx(stopline_bin_combined, cv2.MORPH_CLOSE, kernel)
+        stopline_bin_clean = cv2.morphologyEx(stopline_bin_clean, cv2.MORPH_OPEN, kernel)
+        
+        # 0과 1로 정규화
+        stopline_bin = (stopline_bin_clean > 0).astype(np.uint8)
+        
+        return stopline_bin
     
     def image_callback(self, msg):
         """
