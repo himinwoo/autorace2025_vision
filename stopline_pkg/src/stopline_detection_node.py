@@ -33,6 +33,9 @@ class StopLineDetectionNode:
         # 히스토그램 임계값 파라미터
         self.histogram_threshold = rospy.get_param('~histogram_threshold', 600)
         
+        # Otsu 임계값 조정 파라미터
+        self.otsu_threshold_offset = rospy.get_param('~otsu_threshold_offset', 40)
+        
         # 허프 변환 파라미터
         self.use_hough = rospy.get_param('~use_hough', True)
         self.hough_threshold = rospy.get_param('~hough_threshold', 120)
@@ -81,6 +84,7 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - cooldown_duration: {self.cooldown_duration}s")
         rospy.loginfo(f"  - show_debug_image: {self.show_debug_image}")
         rospy.loginfo(f"  - histogram_threshold: {self.histogram_threshold}")
+        rospy.loginfo(f"  - otsu_threshold_offset: {self.otsu_threshold_offset}")
         rospy.loginfo(f"  - use_hough: {self.use_hough}")
         rospy.loginfo(f"  - hough_threshold: {self.hough_threshold}")
         rospy.loginfo(f"  - hough_min_line_length: {self.hough_min_line_length}")
@@ -115,8 +119,8 @@ class StopLineDetectionNode:
         # Otsu 임계값 계산
         otsu_thresh, stopline_bin_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # Otsu 임계값을 높여서 더 밝은 영역만 선택 (둔감하게)
-        adjusted_thresh = otsu_thresh + 40  # Otsu 결과에 +40 추가
+        # Otsu 임계값을 조정하여 더 밝은 영역만 선택 (둔감하게)
+        adjusted_thresh = otsu_thresh + self.otsu_threshold_offset
         _, stopline_bin_otsu_adjusted = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
         
         # 방법 2: 에지 검출 (정지선 경계 강조) - 임계값 높임
