@@ -41,6 +41,9 @@ class ImageProcessor:
             lane_side_param = "left"
         self.use_left_lane = lane_side_param == "left"
         
+        # /camera/class 토픽 구독 (0=left, 1=right)
+        rospy.Subscriber("/camera/class", Coss, self.class_CB)
+        
         # mission_state별 차선 방향 매핑 (key: mission_state, value: "left" or "right")
         # 예: {0: "right", 1: "left", 2: "right"} -> state 0,2는 오른쪽, state 1은 왼쪽
         self.lane_direction_map = rospy.get_param("~lane_direction_map", {})
@@ -89,6 +92,7 @@ class ImageProcessor:
         self.cam_flag = False  # 카메라 이미지 수신 여부
         self.cmd_msg = Coss()  # 발행할 제어 명령 메시지
         self.cmd_msg.cam_steer = 0.0
+        self.lane_locked = False  # 차선이 한 번 설정되면 고정
 
     def birds_eyeview(self, cv_img):
         """원근 변환(Perspective Transform)을 적용하여 Bird's Eye View 생성
@@ -484,6 +488,31 @@ class ImageProcessor:
             elif new_direction == "right" and self.use_left_lane:
                 self.use_left_lane = False
                 rospy.loginfo(f"[State {self.current_mission_state}] 차선 방향 변경: LEFT -> RIGHT")
+    
+    def class_CB(self, msg):
+        """클래스 토픽 콜백 - 0=left, 1=right (mission_state 3일 때만 작동, 한 번만 적용)
+        
+        Args:
+            msg: Coss 메시지 (class 필드 포함)
+        """
+        # mission_state가 3이 아니면 무시
+        if self.current_mission_state != 4:
+            return
+        
+        if self.lane_locked:
+            return  # 이미 설정되었으면 변경하지 않음
+        
+        if msg.cam_class == 0:
+            self.use_left_lane = True
+            self.lane_locked = True
+            rospy.loginfo("Lane locked to LEFT")
+        elif msg.cam_class == 1:
+            self.use_left_lane = False
+            self.lane_locked = True
+            rospy.loginfo("Lane locked to RIGHT")
+            
+        else:
+            self.use_left_lane = False
 
     def run(self):
         """메인 루프: sense-think-act 사이클 실행"""

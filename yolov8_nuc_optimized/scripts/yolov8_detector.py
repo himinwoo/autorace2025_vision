@@ -15,6 +15,7 @@ from typing import List, Dict, Tuple, Optional
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
+from coss_msgs.msg import Coss
 
 try:
     from ultralytics import YOLO
@@ -51,15 +52,23 @@ class YOLOv8Detector:
         # 성능 측정 변수
         self.fps_counter = FPSCounter()
         
+        # 클래스 검출 안정화를 위한 변수
+        self.detection_threshold = rospy.get_param('~detection_threshold', 5)  # 연속 검출 횟수
+        self.current_class = -1  # 현재 추적 중인 클래스
+        self.class_count = 0  # 연속 검출 카운터
+        self.last_published_class = -1  # 마지막으로 퍼블리시한 클래스
+        
         # ROS 퍼블리셔 설정
+        # Coss 메시지로 클래스 퍼블리시
+        self.coss_pub = rospy.Publisher(
+            '/camera/class',
+            Coss,
+            queue_size=1
+        )
+        # 디버깅용 이미지 퍼블리셔
         self.image_pub = rospy.Publisher(
             self.config['topics']['output_image'],
             Image,
-            queue_size=1
-        )
-        self.info_pub = rospy.Publisher(
-            self.config['topics']['detection_info'],
-            String,
             queue_size=1
         )
         
@@ -80,7 +89,7 @@ class YOLOv8Detector:
         """YAML 설정 파일에서 파라미터 로드"""
         self.config = {
             'model': {
-                'path': rospy.get_param('~model_path', 'yolov8n.pt'),
+                'path': rospy.get_param('~model_path', 'sign.pt'),
                 'input_size': rospy.get_param('~input_size', 640),
                 'format': rospy.get_param('~model_format', 'pt')
             },
@@ -188,11 +197,10 @@ class YOLOv8Detector:
             # 객체 검출 수행
             detections = self._detect_objects(cv_image)
             
-            # 검출 정보 퍼블리시
-            if detections:
-                self._publish_detection_info(detections)
+            # 검출된 클래스를 Coss 메시지로 퍼블리시 (안정화 처리)
+            self._update_class_detection(detections)
             
-            # 시각화 및 퍼블리시
+            # 시각화 및 이미지 퍼블리시 (디버깅용)
             if self.config['visualization']['enable']:
                 vis_image = self._visualize_detections(cv_image, detections)
                 self._publish_image(vis_image)
@@ -263,6 +271,52 @@ class YOLOv8Detector:
         except Exception as e:
             rospy.logerr(f"Detection error: {e}")
             return []
+    
+    def _update_class_detection(self, detections: List[Dict]) -> None:
+        """
+        검출된 클래스를 추적하고 일정 횟수 이상 연속 검출 시 퍼블리시
+        
+        Args:
+            detections: 검출 정보 리스트
+        """
+        if detections:
+            detected_class = detections[0]['class_id']
+            
+            # 동일한 클래스가 연속으로 검출되는지 확인
+            if detected_class == self.current_class:
+                self.class_count += 1
+            else:
+                # 다른 클래스가 검출되면 카운터 리셋
+                self.current_class = detected_class
+                self.class_count = 1
+            
+            # 임계값에 도달하면 퍼블리시 (이전 클래스와 상관없이)
+            if self.class_count >= self.detection_threshold:
+                self._publish_class(self.current_class, detections[0]['class_name'])
+                self.last_published_class = self.current_class
+        else:
+            # 검출이 없으면 -1 퍼블리시
+            self._publish_class(-1, "no_detection")
+            self.current_class = -1
+            self.class_count = 0
+            self.ㄴ = -1
+    
+    def _publish_class(self, class_id: int, class_name: str) -> None:
+        """
+        검출된 클래스를 Coss 메시지로 퍼블리시
+        
+        Args:
+            class_id: 클래스 ID
+            class_name: 클래스 이름
+        """
+        coss_msg = Coss()
+        coss_msg.cam_class = class_id
+        
+        self.coss_pub.publish(coss_msg)
+        
+        # 디버그 로그
+        if self.config['debug']['log_detections']:
+            rospy.loginfo(f"Published class: {class_name} (ID: {class_id})")
     
     def _visualize_detections(self, image: np.ndarray, detections: List[Dict]) -> np.ndarray:
         """
@@ -340,7 +394,7 @@ class YOLOv8Detector:
     
     def _publish_image(self, image: np.ndarray) -> None:
         """
-        이미지 퍼블리시
+        이미지 퍼블리시 (디버깅용)
         
         Args:
             image: OpenCV 이미지
@@ -350,27 +404,6 @@ class YOLOv8Detector:
             self.image_pub.publish(msg)
         except CvBridgeError as e:
             rospy.logerr(f"Failed to publish image: {e}")
-    
-    def _publish_detection_info(self, detections: List[Dict]) -> None:
-        """
-        검출 정보 퍼블리시
-        
-        Args:
-            detections: 검출 정보 리스트
-        """
-        info = {
-            'timestamp': rospy.Time.now().to_sec(),
-            'num_detections': len(detections),
-            'detections': detections
-        }
-        
-        msg = String()
-        msg.data = json.dumps(info)
-        self.info_pub.publish(msg)
-        
-        # 디버그 로그
-        if self.config['debug']['log_detections']:
-            rospy.loginfo(f"Detected {len(detections)} objects")
     
     @staticmethod
     def _get_color(class_id: int) -> Tuple[int, int, int]:
