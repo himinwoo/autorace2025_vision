@@ -2,14 +2,14 @@
   <!-- Stopline Detection Node -->
   <node name="stopline_detection_node" pkg="stopline_pkg" type="stopline_detection_node.py" output="screen">
     <!-- 이미지 크롭 파라미터 -->
-    <param name="crop_top" value="280" />
+    <param name="crop_top" value="300" />
     
     <!-- 정지선 감지 파라미터 -->
     <param name="down_hist_start_line" value="0" />
     <param name="stopline_threshold" value="10" />
-    <param name="count_threshold" value="5" />
-    <rosparam param="cooldown_durations">[3.0, 10.0, 1.0, 10.0, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
-    <param name="show_debug_image" value="true" />
+    <param name="count_threshold" value="10" />
+    <rosparam param="cooldown_durations">[3.0, 10.0, 1.0, 15.0, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
+    <param name="show_debug_image" value="false" />
     
     <!-- 히스토그램 임계값 파라미터 -->
     <param name="histogram_threshold" value="200" />

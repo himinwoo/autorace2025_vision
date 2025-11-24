@@ -67,10 +67,13 @@ class StopLineDetectionNode:
         # Lidar flag 관련 변수
         self.lidar_flag = False
         self.lidar_cooldown_started = False  # state 6에서 쿨다운 시작 여부
+        
+        # Cone finish 관련 변수 (state 3, 7에서 정지선 감지 제어)
+        self.cone_finish = False
 
         # 서브스크라이버 설정
         rospy.Subscriber("/usb_cam/image_rect_color", Image, self.image_callback)
-        rospy.Subscriber("/lidar", Coss, self.lidar_callback)  # Coss 메시지 구독 추가
+        rospy.Subscriber("/lidar", Coss, self.lidar_callback)  # Coss 메시지 구독 (lidar_flag, cone_finish)
 
         # 변수 초기화
         self.bridge = CvBridge()
@@ -144,6 +147,11 @@ class StopLineDetectionNode:
             
             # mission_state 증가
             self.coss_msg.mission_state += 1
+            
+            # state 3, 7 진입 시 cone_finish 초기화 (정지선 감지로 state 변경 시)
+            if self.coss_msg.mission_state in [3, 7]:
+                self.cone_finish = False
+                rospy.loginfo(f"[State {self.coss_msg.mission_state} 진입] cone_finish 초기화")
         
         # Coss 메시지 발행
         self.coss_pub.publish(self.coss_msg)
@@ -264,17 +272,24 @@ class StopLineDetectionNode:
     def lidar_callback(self, msg):
         """
         /lidar 토픽 콜백 함수
-        Coss 메시지에서 lidar_flag를 저장합니다.
+        Coss 메시지에서 lidar_flag와 cone_finish를 저장합니다.
         state 6에서 lidar_flag가 false→true로 전환되면 쿨다운을 시작합니다.
         """
         prev_flag = self.lidar_flag
         self.lidar_flag = msg.lidar_flag
         
+        # cone_finish 값 업데이트
+        self.cone_finish = msg.cone_finish
+        
         # state 6에서만 lidar_flag 전환 감지
         if self.coss_msg.mission_state == 6:
             self._handle_state6_lidar_transition(prev_flag)
         
-        rospy.logdebug(f"Received lidar_flag: {self.lidar_flag}")
+        # state 3, 7에서 cone_finish가 true로 변경되면 로그 출력
+        if self.coss_msg.mission_state in [3, 7] and self.cone_finish:
+            rospy.loginfo_once(f"[State {self.coss_msg.mission_state}] cone_finish = True → 정지선 감지 활성화")
+        
+        rospy.logdebug(f"Received lidar_flag: {self.lidar_flag}, cone_finish: {self.cone_finish}")
     
     def _handle_state6_lidar_transition(self, prev_flag):
         """
@@ -295,8 +310,9 @@ class StopLineDetectionNode:
     
     def can_detect(self):
         """
-        정지선 감지 가능 여부를 확인 (쿨다운 체크)
+        정지선 감지 가능 여부를 확인 (쿨다운 체크 및 cone_finish 체크)
         
+        state 3, 7: cone_finish가 true가 될 때까지 정지선 감지 비활성화
         state 6: 라이다 감지 후 쿨다운이 시작되어야 감지 가능
         기타 state: 이전 감지 시점부터 쿨다운 경과 후 감지 가능
         
@@ -304,6 +320,12 @@ class StopLineDetectionNode:
             bool: 감지 가능하면 True, 불가능하면 False
         """
         current_state = self.coss_msg.mission_state
+        
+        # state 3, 7: cone_finish가 true가 아니면 정지선 감지 불가
+        if current_state in [3, 7]:
+            if not self.cone_finish:
+                rospy.logdebug_throttle(1.0, f"[State {current_state}] cone_finish 대기 중...")
+                return False
         
         # state 6 특수 처리: 라이다 쿨다운이 시작되지 않았으면 감지 불가
         if current_state == 6 and not self.lidar_cooldown_started:
