@@ -3,18 +3,18 @@
   <!-- Color Detector Node (통합: 빨강 + 파랑) -->
   <node name="color_detector" pkg="color_detector" type="color_detector_node" output="screen">
     <!-- 픽셀 개수 임계값 -->
-    <param name="red_threshold" value="50000"/>
-    <param name="blue_threshold" value="50000"/>
+    <param name="red_threshold" value="45000"/>
+    <param name="blue_threshold" value="45000"/>
     <param name="debug_mode" value="false"/>
     
     <!-- 빨간색 HSV 범위 (빨강은 HSV에서 0-10과 170-180에 걸쳐 있음) -->
-    <rosparam param="red_hsv_lower1">[0, 80, 60]</rosparam>
-    <rosparam param="red_hsv_upper1">[10, 140, 130]</rosparam>
-    <rosparam param="red_hsv_lower2">[170, 80, 60]</rosparam>
-    <rosparam param="red_hsv_upper2">[180, 140, 130]</rosparam>
+      <rosparam param="red_hsv_lower1">[0, 75, 150]</rosparam>
+      <rosparam param="red_hsv_upper1">[6, 95, 190]</rosparam>
+      <rosparam param="red_hsv_lower2">[174, 75, 150]</rosparam>
+      <rosparam param="red_hsv_upper2">[180, 95, 190]</rosparam>
     
     <!-- 파란색 HSV 범위 -->
-    <rosparam param="blue_hsv_lower">[110, 60, 50]</rosparam>
-    <rosparam param="blue_hsv_upper">[125, 110, 100]</rosparam>
+    <rosparam param="blue_hsv_lower">[118, 70, 120]</rosparam>
+    <rosparam param="blue_hsv_upper">[122, 112, 155]</rosparam>
   </node>
 </launch>

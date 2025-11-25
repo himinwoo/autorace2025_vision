@@ -2,20 +2,21 @@
   <!-- Stopline Detection Node -->
   <node name="stopline_detection_node" pkg="stopline_pkg" type="stopline_detection_node.py" output="screen">
     <!-- 이미지 크롭 파라미터 -->
-    <param name="crop_top" value="300" />
+    <param name="crop_top" value="280" />
     
     <!-- 정지선 감지 파라미터 -->
     <param name="down_hist_start_line" value="0" />
     <param name="stopline_threshold" value="10" />
     <param name="count_threshold" value="10" />
-    <rosparam param="cooldown_durations">[3.0, 10.0, 1.0, 15.0, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
+    <rosparam param="cooldown_durations">[3.0, 10.0, 5.0, 15.0, 1.5, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
+    <!-- <rosparam param="cooldown_durations">[3.0, 10.0, 5.0, 15.0, 3.0]</rosparam> -->
     <param name="show_debug_image" value="false" />
     
     <!-- 히스토그램 임계값 파라미터 -->
     <param name="histogram_threshold" value="200" />
     
     <!-- Otsu 임계값 조정 파라미터 -->
-    <param name="otsu_threshold_offset" value="40" />
+    <param name="otsu_threshold_offset" value="45" />
     
     <!-- 허프 변환 파라미터 (대각선 정지선 감지용) -->
     <param name="use_hough" value="false" />
