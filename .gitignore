@@ -33,5 +33,6 @@ Makefile
 !/morai_lane
 !/yolov8_nuc_optimized/
 !.gitignore
+!manage_autorace_symlinks.sh
 !README.md
 !commit.md
