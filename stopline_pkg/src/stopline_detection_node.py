@@ -44,6 +44,13 @@ class StopLineDetectionNode:
         # Otsu 임계값 조정 파라미터
         self.otsu_threshold_offset = rospy.get_param('~otsu_threshold_offset', 50)
         
+        # 허프라인 파라미터
+        self.hough_threshold = rospy.get_param('~hough_threshold', 50)
+        self.hough_min_line_length = rospy.get_param('~hough_min_line_length', 40)
+        self.hough_max_line_gap = rospy.get_param('~hough_max_line_gap', 10)
+        self.hough_angle_tolerance = rospy.get_param('~hough_angle_tolerance', 25.0)  # 수평선 기준 ±각도
+        self.hough_use_morphology = rospy.get_param('~hough_use_morphology', True)  # 허프라인 결과에 모폴로지 적용
+        
         # 노란색 정지선 감지 파라미터 (state 9용)
         self.yellow_hsv_lower = rospy.get_param('~yellow_hsv_lower', [0, 40, 50])
         self.yellow_hsv_upper = rospy.get_param('~yellow_hsv_upper', [26, 110, 255])
@@ -93,6 +100,11 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - show_debug_image: {self.show_debug_image}")
         rospy.loginfo(f"  - histogram_threshold: {self.histogram_threshold}")
         rospy.loginfo(f"  - otsu_threshold_offset: {self.otsu_threshold_offset}")
+        rospy.loginfo(f"  - hough_threshold: {self.hough_threshold}")
+        rospy.loginfo(f"  - hough_min_line_length: {self.hough_min_line_length}")
+        rospy.loginfo(f"  - hough_max_line_gap: {self.hough_max_line_gap}")
+        rospy.loginfo(f"  - hough_angle_tolerance: {self.hough_angle_tolerance}")
+        rospy.loginfo(f"  - hough_use_morphology: {self.hough_use_morphology}")
         rospy.loginfo(f"  - yellow_hsv_lower: {self.yellow_hsv_lower}")
         rospy.loginfo(f"  - yellow_hsv_upper: {self.yellow_hsv_upper}")
         rospy.loginfo(f"  - yellow_state: {self.yellow_state}")
@@ -205,15 +217,20 @@ class StopLineDetectionNode:
             stopline_bin: 이진화된 정지선 이미지 (0과 1)
         """
         stopline_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # ===== 1단계: 과포화 영역 마스킹 (빛 반사 사전 제거) =====
+        
+        # ===== 허프라인 검출 (독립적으로 먼저 수행) =====
+        hough_mask = self._detect_hough_lines(stopline_gray)
+        
+        # ===== 히스토그램 기반 검출 =====
+        # 1단계: 과포화 영역 마스킹 (빛 반사 사전 제거)
         saturation_mask = (stopline_gray < 230) & (stopline_gray > 30)
         stopline_gray_filtered = cv2.bitwise_and(
             stopline_gray, stopline_gray,
             mask=saturation_mask.astype(np.uint8)
         )
-        # ===== 2단계: 적응적 노이즈 제거 =====
+        # 2단계: 적응적 노이즈 제거
         stopline_denoised = cv2.bilateralFilter(stopline_gray_filtered, 9, 75, 75)
-        # ===== 3단계: CLAHE + 적응형 임계값 결합 =====
+        # 3단계: CLAHE + 적응형 임계값 결합
         clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8,8))
         enhanced = clahe.apply(stopline_denoised)
         # Otsu + offset
@@ -227,38 +244,98 @@ class StopLineDetectionNode:
         )
         # 두 임계값의 교집합 (더 보수적)
         combined_thresh = cv2.bitwise_and(stopline_bin_otsu, adaptive_thresh)
-        # ===== 4단계: 에지 강조 (정지선 경계선) =====
+        # 4단계: 에지 강조 (정지선 경계선)
         edges = cv2.Canny(stopline_denoised, 100, 200)
         kernel = np.ones((3, 3), np.uint8)
         edges_dilated = cv2.dilate(edges, kernel, iterations=1)
         # 임계값과 에지 결합
         stopline_bin_combined = cv2.bitwise_or(combined_thresh, edges_dilated)
-        # ===== 5단계: 형태학적 필터링 (원형 객체 제거) =====
+        # 5단계: 형태학적 필터링 (원형 객체 제거)
         horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
         horizontal_emphasis = cv2.morphologyEx(
             stopline_bin_combined, cv2.MORPH_OPEN, horizontal_kernel
         )
         kernel = np.ones((5, 5), np.uint8)
         stopline_clean = cv2.morphologyEx(horizontal_emphasis, cv2.MORPH_CLOSE, kernel)
-        # ===== 6단계: 원형도 기반 필터링 =====
+        # 6단계: 원형도 기반 필터링
         histo_bin = self.stopline_detector._filter_circular_regions(stopline_clean)
 
-        # ===== 7단계: 허프라인 기반 대각선 정지선 검출 =====
-        # 허프라인은 에지에서 검출
-        hough_mask = np.zeros_like(histo_bin)
-        lines = cv2.HoughLinesP(edges_dilated, 1, np.pi/180, threshold=60, minLineLength=30, maxLineGap=20)
+        # ===== OR 연산으로 결과 합치기 =====
+        stopline_bin = cv2.bitwise_or(histo_bin, hough_mask)
+        return stopline_bin
+    
+    def _detect_hough_lines(self, gray_img):
+        """
+        허프라인 변환을 이용한 정지선 검출
+        원본 그레이스케일 이미지에서 직접 검출하여 전처리 손실 최소화
+        
+        Args:
+            gray_img: 그레이스케일 이미지
+            
+        Returns:
+            hough_mask: 허프라인 검출 결과 마스크 (0과 1)
+        """
+        # 1단계: 가우시안 블러로 노이즈 감소 (과도한 전처리 방지)
+        blurred = cv2.GaussianBlur(gray_img, (5, 5), 0)
+        
+        # 2단계: Canny 에지 검출 (원본에 가까운 이미지에서)
+        edges = cv2.Canny(blurred, 50, 150, apertureSize=3)
+        
+        # 3단계: 허프라인 변환으로 직선 검출
+        lines = cv2.HoughLinesP(
+            edges, 
+            rho=1, 
+            theta=np.pi/180, 
+            threshold=self.hough_threshold,
+            minLineLength=self.hough_min_line_length, 
+            maxLineGap=self.hough_max_line_gap
+        )
+        
+        # 4단계: 정지선 특성에 맞는 라인 필터링
+        hough_mask = np.zeros_like(gray_img)
+        
         if lines is not None:
             for line in lines:
                 x1, y1, x2, y2 = line[0]
+                
+                # 라인 각도 계산 (수평선 기준)
                 angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-                angle = abs(angle)
-                # 대각선 각도 범위(10~70도, 110~160도)만 마스크로 사용
-                if (10 < angle < 70) or (110 < angle < 170):
-                    cv2.line(hough_mask, (x1, y1), (x2, y2), 1, 8)
-
-        # ===== 8단계: OR 연산으로 결과 합치기 =====
-        stopline_bin = cv2.bitwise_or(histo_bin, hough_mask)
-        return stopline_bin
+                
+                # 각도 정규화 (-180 ~ 180)
+                if angle < 0:
+                    angle += 180
+                
+                # 수평선에 가까운 라인만 선택 (0도, 180도 근처)
+                # 또는 약간의 대각선 (hough_angle_tolerance 이내)
+                is_near_horizontal = (
+                    angle <= self.hough_angle_tolerance or 
+                    angle >= (180 - self.hough_angle_tolerance)
+                )
+                
+                # 정지선 특성: 수평 또는 약간 기울어진 라인
+                if is_near_horizontal:
+                    # 라인 길이 계산
+                    line_length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                    
+                    # 충분히 긴 라인만 사용 (정지선은 이미지 폭의 상당 부분 차지)
+                    if line_length > gray_img.shape[1] * 0.15:  # 이미지 폭의 15% 이상
+                        # 두꺼운 선으로 그려서 히스토그램과 결합 시 효과적
+                        cv2.line(hough_mask, (x1, y1), (x2, y2), 255, thickness=5)
+        
+        # 5단계: 모폴로지 연산으로 라인 보강 (선택적)
+        if self.hough_use_morphology and np.any(hough_mask > 0):
+            # 수평 방향 확장 (정지선 연속성 보장)
+            horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
+            hough_mask = cv2.morphologyEx(hough_mask, cv2.MORPH_CLOSE, horizontal_kernel)
+            
+            # 수직 방향 확장 (정지선 두께 보장)
+            vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 7))
+            hough_mask = cv2.dilate(hough_mask, vertical_kernel, iterations=1)
+        
+        # 0과 1로 정규화
+        hough_mask = (hough_mask > 0).astype(np.uint8)
+        
+        return hough_mask
     
     def image_callback(self, msg):
         """
