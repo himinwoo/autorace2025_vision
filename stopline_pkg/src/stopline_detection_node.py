@@ -198,64 +198,66 @@ class StopLineDetectionNode:
     
     def detect_white_stopline(self, img):
         """
-        흰색 정지선 감지 (기존 방식)
-        
+        흰색 정지선 감지 (히스토그램+허프라인 OR)
         Args:
             img: BGR 이미지
-            
         Returns:
             stopline_bin: 이진화된 정지선 이미지 (0과 1)
         """
         stopline_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
         # ===== 1단계: 과포화 영역 마스킹 (빛 반사 사전 제거) =====
         saturation_mask = (stopline_gray < 230) & (stopline_gray > 30)
         stopline_gray_filtered = cv2.bitwise_and(
             stopline_gray, stopline_gray,
             mask=saturation_mask.astype(np.uint8)
         )
-
         # ===== 2단계: 적응적 노이즈 제거 =====
         stopline_denoised = cv2.bilateralFilter(stopline_gray_filtered, 9, 75, 75)
-
         # ===== 3단계: CLAHE + 적응형 임계값 결합 =====
         clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8,8))
         enhanced = clahe.apply(stopline_denoised)
-
         # Otsu + offset
         otsu_thresh, _ = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         adjusted_thresh = otsu_thresh + self.otsu_threshold_offset
         _, stopline_bin_otsu = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
-
         # Adaptive threshold (지역적 조명 변화 대응)
         adaptive_thresh = cv2.adaptiveThreshold(
             enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY, blockSize=21, C=-3
         )
-
         # 두 임계값의 교집합 (더 보수적)
         combined_thresh = cv2.bitwise_and(stopline_bin_otsu, adaptive_thresh)
-
         # ===== 4단계: 에지 강조 (정지선 경계선) =====
         edges = cv2.Canny(stopline_denoised, 100, 200)
         kernel = np.ones((3, 3), np.uint8)
         edges_dilated = cv2.dilate(edges, kernel, iterations=1)
-
         # 임계값과 에지 결합
         stopline_bin_combined = cv2.bitwise_or(combined_thresh, edges_dilated)
-
         # ===== 5단계: 형태학적 필터링 (원형 객체 제거) =====
         horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
         horizontal_emphasis = cv2.morphologyEx(
             stopline_bin_combined, cv2.MORPH_OPEN, horizontal_kernel
         )
-
         kernel = np.ones((5, 5), np.uint8)
         stopline_clean = cv2.morphologyEx(horizontal_emphasis, cv2.MORPH_CLOSE, kernel)
-
         # ===== 6단계: 원형도 기반 필터링 =====
-        stopline_bin = self.stopline_detector._filter_circular_regions(stopline_clean)
+        histo_bin = self.stopline_detector._filter_circular_regions(stopline_clean)
 
+        # ===== 7단계: 허프라인 기반 대각선 정지선 검출 =====
+        # 허프라인은 에지에서 검출
+        hough_mask = np.zeros_like(histo_bin)
+        lines = cv2.HoughLinesP(edges_dilated, 1, np.pi/180, threshold=60, minLineLength=30, maxLineGap=20)
+        if lines is not None:
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+                angle = abs(angle)
+                # 대각선 각도 범위(10~70도, 110~160도)만 마스크로 사용
+                if (10 < angle < 70) or (110 < angle < 170):
+                    cv2.line(hough_mask, (x1, y1), (x2, y2), 1, 8)
+
+        # ===== 8단계: OR 연산으로 결과 합치기 =====
+        stopline_bin = cv2.bitwise_or(histo_bin, hough_mask)
         return stopline_bin
     
     def image_callback(self, msg):
