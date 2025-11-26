@@ -10,7 +10,7 @@
     <param name="count_threshold" value="10" />
     <rosparam param="cooldown_durations">[3.0, 10.0, 5.0, 15.0, 1.5, 3.0]</rosparam> <!-- mission_state별 쿨다운 시간 (초) -->
     <!-- <rosparam param="cooldown_durations">[3.0, 10.0, 5.0, 15.0, 3.0]</rosparam> -->
-    <param name="show_debug_image" value="false" />
+    <param name="show_debug_image" value="true" />
     
     <!-- 히스토그램 임계값 파라미터 -->
     <param name="histogram_threshold" value="200" />

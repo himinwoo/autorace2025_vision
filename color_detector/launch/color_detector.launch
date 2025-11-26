@@ -7,14 +7,13 @@
     <param name="blue_threshold" value="45000"/>
     <param name="debug_mode" value="false"/>
     
-    <!-- 빨간색 HSV 범위 (빨강은 HSV에서 0-10과 170-180에 걸쳐 있음) -->
-      <rosparam param="red_hsv_lower1">[0, 75, 150]</rosparam>
-      <rosparam param="red_hsv_upper1">[6, 95, 190]</rosparam>
-      <rosparam param="red_hsv_lower2">[174, 75, 150]</rosparam>
-      <rosparam param="red_hsv_upper2">[180, 95, 190]</rosparam>
-    
+  <!-- 빨간색 HSV 범위 (빨강은 HSV에서 0-10과 170-180에 걸쳐 있음) -->
+    <rosparam param="red_hsv_lower1">[0, 70, 45]</rosparam>
+    <rosparam param="red_hsv_upper1">[15, 145, 75]</rosparam>
+    <rosparam param="red_hsv_lower2">[175, 70, 45]</rosparam>
+    <rosparam param="red_hsv_upper2">[180, 145, 75]</rosparam>
     <!-- 파란색 HSV 범위 -->
-    <rosparam param="blue_hsv_lower">[118, 70, 120]</rosparam>
-    <rosparam param="blue_hsv_upper">[122, 112, 155]</rosparam>
+    <rosparam param="blue_hsv_lower">[90, 40, 50]</rosparam>
+    <rosparam param="blue_hsv_upper">[115, 145, 80]</rosparam>
   </node>
 </launch>

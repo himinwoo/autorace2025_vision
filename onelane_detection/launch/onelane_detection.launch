@@ -32,10 +32,10 @@
         
         <!-- 조향 게인 -->
         <!-- 통합 게인 (설정 시 좌우 구분 무시) -->
-        <!-- <param name="steering_gain" value="0.6" /> -->
+        <param name="steering_gain" value="0.66" />
         <!-- 왼쪽/오른쪽 차선별 개별 게인 -->
-        <param name="steering_gain_left" value="0.66" />
-        <param name="steering_gain_right" value="0.55" />
+        <!-- <param name="steering_gain_left" value="0.66" /> -->
+        <!-- <param name="steering_gain_right" value="0.55" /> -->
         
         <!-- 주행 제어 -->
         <param name="enable_drive" value="true" />
