@@ -31,7 +31,7 @@ class StopLineDetectionNode:
         # 파라미터 로드
         self.down_hist_start_line = rospy.get_param('~down_hist_start_line', 0)
         self.stopline_threshold = rospy.get_param('~stopline_threshold', 10)
-        self.count_threshold = rospy.get_param('~count_threshold', 15)
+        self.count_thresholds = rospy.get_param('~count_thresholds', [15])  # mission_state별 count threshold 리스트
         self.cooldown_durations = rospy.get_param('~cooldown_durations', [6.0])  # mission_state별 쿨다운 시간 리스트
         self.show_debug_image = rospy.get_param('~show_debug_image', False)
         
@@ -81,11 +81,10 @@ class StopLineDetectionNode:
         self.bridge = CvBridge()
         self.img = None
         
-        # 정지선 감지기 초기화
+        # 정지선 감지기 초기화 (count_threshold는 detect 시 동적으로 전달)
         self.stopline_detector = StopLineDetector(
             down_hist_start_line=self.down_hist_start_line,
             stopline_threshold=self.stopline_threshold,
-            count_threshold=self.count_threshold,
             histogram_threshold=self.histogram_threshold,
             otsu_threshold_offset=self.otsu_threshold_offset
         )
@@ -98,7 +97,7 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - crop_top: {self.crop_top}")
         rospy.loginfo(f"  - down_hist_start_line: {self.down_hist_start_line}")
         rospy.loginfo(f"  - stopline_threshold: {self.stopline_threshold}")
-        rospy.loginfo(f"  - count_threshold: {self.count_threshold}")
+        rospy.loginfo(f"  - count_thresholds: {self.count_thresholds}")
         rospy.loginfo(f"  - cooldown_durations: {self.cooldown_durations}")
         rospy.loginfo(f"  - show_debug_image: {self.show_debug_image}")
         rospy.loginfo(f"  - histogram_threshold: {self.histogram_threshold}")
@@ -133,8 +132,11 @@ class StopLineDetectionNode:
         else:
             stopline_bin = self.detect_white_stopline(stopline_img)
         
+        # 현재 state에 맞는 count_threshold 가져오기
+        current_count_threshold = self._get_count_threshold(self.coss_msg.mission_state)
+        
         # 정지선 감지 수행
-        detected, stopline_indices, stopline_count = self.stopline_detector.detect(stopline_bin)
+        detected, stopline_indices, stopline_count = self.stopline_detector.detect(stopline_bin, current_count_threshold)
         
         # 정지선 감지 및 쿨다운 처리
         if detected and self.can_detect():
@@ -471,8 +473,24 @@ class StopLineDetectionNode:
         if state < len(self.cooldown_durations):
             return self.cooldown_durations[state]
         else:
-            # state가 리스트 범위를 벗어나면 마지막 값 사용
+            # 마지막 쿨다운 시간을 기본값으로 사용
             return self.cooldown_durations[-1]
+    
+    def _get_count_threshold(self, state):
+        """
+        주어진 state에 해당하는 count_threshold를 반환
+        
+        Args:
+            state: mission_state 값
+            
+        Returns:
+            int: count_threshold 값
+        """
+        if state < len(self.count_thresholds):
+            return self.count_thresholds[state]
+        else:
+            # 마지막 count_threshold를 기본값으로 사용
+            return self.count_thresholds[-1]
 
 if __name__ == "__main__":
     try: 
