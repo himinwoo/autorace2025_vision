@@ -44,15 +44,6 @@ class StopLineDetectionNode:
         # Otsu 임계값 조정 파라미터
         self.otsu_threshold_offset = rospy.get_param('~otsu_threshold_offset', 50)
         
-        # 허프 변환 파라미터
-        self.use_hough = rospy.get_param('~use_hough', True)
-        self.hough_threshold = rospy.get_param('~hough_threshold', 100)
-        self.hough_min_line_length = rospy.get_param('~hough_min_line_length', 200)
-        self.hough_max_line_gap = rospy.get_param('~hough_max_line_gap', 50)
-        self.hough_angle_threshold = rospy.get_param('~hough_angle_threshold', 15)
-        self.hough_width_ratio = rospy.get_param('~hough_width_ratio', 0.4)
-        self.hough_consistency_threshold = rospy.get_param('~hough_consistency_threshold', 0.7)
-        
         # 노란색 정지선 감지 파라미터 (state 9용)
         self.yellow_hsv_lower = rospy.get_param('~yellow_hsv_lower', [0, 40, 50])
         self.yellow_hsv_upper = rospy.get_param('~yellow_hsv_upper', [26, 110, 255])
@@ -86,13 +77,6 @@ class StopLineDetectionNode:
             stopline_threshold=self.stopline_threshold,
             count_threshold=self.count_threshold,
             histogram_threshold=self.histogram_threshold,
-            use_hough=self.use_hough,
-            hough_threshold=self.hough_threshold,
-            hough_min_line_length=self.hough_min_line_length,
-            hough_max_line_gap=self.hough_max_line_gap,
-            hough_angle_threshold=self.hough_angle_threshold,
-            hough_width_ratio=self.hough_width_ratio,
-            hough_consistency_threshold=self.hough_consistency_threshold,
             otsu_threshold_offset=self.otsu_threshold_offset
         )
         
@@ -109,12 +93,6 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - show_debug_image: {self.show_debug_image}")
         rospy.loginfo(f"  - histogram_threshold: {self.histogram_threshold}")
         rospy.loginfo(f"  - otsu_threshold_offset: {self.otsu_threshold_offset}")
-        rospy.loginfo(f"  - use_hough: {self.use_hough}")
-        rospy.loginfo(f"  - hough_threshold: {self.hough_threshold}")
-        rospy.loginfo(f"  - hough_min_line_length: {self.hough_min_line_length}")
-        rospy.loginfo(f"  - hough_max_line_gap: {self.hough_max_line_gap}")
-        rospy.loginfo(f"  - hough_angle_threshold: {self.hough_angle_threshold}")
-        rospy.loginfo(f"  - hough_width_ratio: {self.hough_width_ratio}")
         rospy.loginfo(f"  - yellow_hsv_lower: {self.yellow_hsv_lower}")
         rospy.loginfo(f"  - yellow_hsv_upper: {self.yellow_hsv_upper}")
         rospy.loginfo(f"  - yellow_state: {self.yellow_state}")
