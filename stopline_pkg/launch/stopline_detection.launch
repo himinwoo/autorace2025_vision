@@ -24,6 +24,9 @@
     <param name="hough_angle_tolerance" value="25.0" />
     <param name="hough_use_morphology" value="true" />
 
+    <!-- 색공간 선택 파라미터 -->
+    <param name="use_lab_colorspace" value="false" />
+
     <!-- 노란색 정지선 감지 파라미터 (state 9용) -->
     <rosparam param="yellow_hsv_lower">[0, 40, 50]</rosparam>
     <rosparam param="yellow_hsv_upper">[26, 110, 255]</rosparam>

@@ -17,6 +17,7 @@
 - `~hough_max_line_gap` (int, default: 10): 허프라인 최대 간격 (픽셀)
 - `~hough_angle_tolerance` (float, default: 25.0): 수평선 기준 각도 허용 범위 (도)
 - `~hough_use_morphology` (bool, default: true): 허프라인 결과에 모폴로지 연산 적용 여부
+- `~use_lab_colorspace` (bool, default: true): LAB 색공간 사용 여부 (빛 번짐과 반사에 강함)
 - `~yellow_hsv_lower` (list, default: [0, 40, 50]): 노란색 HSV 하한값 (state 9용)
 - `~yellow_hsv_upper` (list, default: [26, 110, 255]): 노란색 HSV 상한값 (state 9용)
 - `~yellow_state` (int, default: 9): 노란색 정지선 감지 적용 state
@@ -71,8 +72,18 @@ rostopic echo /camera/stopline/count
 
 ### 흰색 정지선 감지 (히스토그램 + 허프라인 OR 방식)
 
+#### 0. 색공간 선택 (빛 번짐 대응)
+- **LAB 색공간 (기본값, 권장)**:
+  - L (Lightness) 채널 사용
+  - 빛 번짐과 바닥 반사에 강함
+  - 과포화 억제 및 균일한 밝기 분포
+  - 조명 변화에 더 강건
+- **그레이스케일 (옵션)**:
+  - 전통적인 방식
+  - 계산 속도 약간 빠름
+
 #### 1. 허프라인 기반 검출 (독립적)
-- 원본 그레이스케일 이미지에서 직접 검출하여 전처리 손실 최소화
+- 원본 그레이스케일(또는 LAB L) 이미지에서 직접 검출하여 전처리 손실 최소화
 - 가우시안 블러로 경미한 노이즈 제거
 - Canny 에지 검출
 - 허프라인 변환으로 직선 검출

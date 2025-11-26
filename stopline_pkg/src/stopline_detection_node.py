@@ -51,6 +51,9 @@ class StopLineDetectionNode:
         self.hough_angle_tolerance = rospy.get_param('~hough_angle_tolerance', 25.0)  # 수평선 기준 ±각도
         self.hough_use_morphology = rospy.get_param('~hough_use_morphology', True)  # 허프라인 결과에 모폴로지 적용
         
+        # 색공간 선택 파라미터
+        self.use_lab_colorspace = rospy.get_param('~use_lab_colorspace', True)  # LAB 색공간 사용 여부 (빛 번짐에 강함)
+        
         # 노란색 정지선 감지 파라미터 (state 9용)
         self.yellow_hsv_lower = rospy.get_param('~yellow_hsv_lower', [0, 40, 50])
         self.yellow_hsv_upper = rospy.get_param('~yellow_hsv_upper', [26, 110, 255])
@@ -105,6 +108,7 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - hough_max_line_gap: {self.hough_max_line_gap}")
         rospy.loginfo(f"  - hough_angle_tolerance: {self.hough_angle_tolerance}")
         rospy.loginfo(f"  - hough_use_morphology: {self.hough_use_morphology}")
+        rospy.loginfo(f"  - use_lab_colorspace: {self.use_lab_colorspace}")
         rospy.loginfo(f"  - yellow_hsv_lower: {self.yellow_hsv_lower}")
         rospy.loginfo(f"  - yellow_hsv_upper: {self.yellow_hsv_upper}")
         rospy.loginfo(f"  - yellow_state: {self.yellow_state}")
@@ -216,7 +220,14 @@ class StopLineDetectionNode:
         Returns:
             stopline_bin: 이진화된 정지선 이미지 (0과 1)
         """
-        stopline_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # 색공간 변환: LAB L 채널 또는 그레이스케일
+        if self.use_lab_colorspace:
+            # LAB 색공간으로 변환 (빛 번짐과 반사에 강함)
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            stopline_gray = lab[:, :, 0]  # L (Lightness) 채널만 추출
+        else:
+            # 기존 그레이스케일 방식
+            stopline_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         # ===== 허프라인 검출 (독립적으로 먼저 수행) =====
         hough_mask = self._detect_hough_lines(stopline_gray)
@@ -267,10 +278,10 @@ class StopLineDetectionNode:
     def _detect_hough_lines(self, gray_img):
         """
         허프라인 변환을 이용한 정지선 검출
-        원본 그레이스케일 이미지에서 직접 검출하여 전처리 손실 최소화
+        원본 그레이스케일(또는 LAB L) 이미지에서 직접 검출하여 전처리 손실 최소화
         
         Args:
-            gray_img: 그레이스케일 이미지
+            gray_img: 그레이스케일 또는 LAB L 채널 이미지
             
         Returns:
             hough_mask: 허프라인 검출 결과 마스크 (0과 1)
