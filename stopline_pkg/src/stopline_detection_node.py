@@ -277,6 +277,12 @@ class StopLineDetectionNode:
         # cone_finish 값 업데이트
         self.cone_finish = msg.cone_finish
         
+        # start_parking 값 업데이트
+        self.start_parking = msg.start_parking
+        
+        if self.start_parking == True:
+            self.coss_msg.mission_state = 10
+        
         # state 6에서만 lidar_flag 전환 감지
         if self.coss_msg.mission_state == 6:
             self._handle_state6_lidar_transition(prev_flag)
@@ -326,6 +332,10 @@ class StopLineDetectionNode:
         # state 6 특수 처리: 라이다 쿨다운이 시작되지 않았으면 감지 불가
         if current_state == 6 and not self.lidar_cooldown_started:
             rospy.logdebug("[State 6] 라이다 감지 대기 중...")
+            return False
+        
+        # state 10 에서는 정지선 감지하지 않음
+        if current_state == 10:
             return False
         
         # 쿨다운 시간 확인
