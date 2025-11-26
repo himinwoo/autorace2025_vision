@@ -31,7 +31,7 @@ class StopLineDetectionNode:
         # 파라미터 로드
         self.down_hist_start_line = rospy.get_param('~down_hist_start_line', 0)
         self.stopline_threshold = rospy.get_param('~stopline_threshold', 10)
-        self.count_threshold = rospy.get_param('~count_threshold', 10)
+        self.count_threshold = rospy.get_param('~count_threshold', 15)
         self.cooldown_durations = rospy.get_param('~cooldown_durations', [6.0])  # mission_state별 쿨다운 시간 리스트
         self.show_debug_image = rospy.get_param('~show_debug_image', False)
         
@@ -39,18 +39,19 @@ class StopLineDetectionNode:
         self.crop_top = rospy.get_param('~crop_top', 280)  # 크롭 시작 위치 (위에서부터)
         
         # 히스토그램 임계값 파라미터
-        self.histogram_threshold = rospy.get_param('~histogram_threshold', 600)
+        self.histogram_threshold = rospy.get_param('~histogram_threshold', 800)
         
         # Otsu 임계값 조정 파라미터
-        self.otsu_threshold_offset = rospy.get_param('~otsu_threshold_offset', 40)
+        self.otsu_threshold_offset = rospy.get_param('~otsu_threshold_offset', 50)
         
         # 허프 변환 파라미터
         self.use_hough = rospy.get_param('~use_hough', True)
-        self.hough_threshold = rospy.get_param('~hough_threshold', 120)
-        self.hough_min_line_length = rospy.get_param('~hough_min_line_length', 150)
-        self.hough_max_line_gap = rospy.get_param('~hough_max_line_gap', 100)
-        self.hough_angle_threshold = rospy.get_param('~hough_angle_threshold', 30)
-        self.hough_width_ratio = rospy.get_param('~hough_width_ratio', 0.3)
+        self.hough_threshold = rospy.get_param('~hough_threshold', 100)
+        self.hough_min_line_length = rospy.get_param('~hough_min_line_length', 200)
+        self.hough_max_line_gap = rospy.get_param('~hough_max_line_gap', 50)
+        self.hough_angle_threshold = rospy.get_param('~hough_angle_threshold', 15)
+        self.hough_width_ratio = rospy.get_param('~hough_width_ratio', 0.4)
+        self.hough_consistency_threshold = rospy.get_param('~hough_consistency_threshold', 0.7)
         
         # 노란색 정지선 감지 파라미터 (state 9용)
         self.yellow_hsv_lower = rospy.get_param('~yellow_hsv_lower', [0, 40, 50])
@@ -90,7 +91,9 @@ class StopLineDetectionNode:
             hough_min_line_length=self.hough_min_line_length,
             hough_max_line_gap=self.hough_max_line_gap,
             hough_angle_threshold=self.hough_angle_threshold,
-            hough_width_ratio=self.hough_width_ratio
+            hough_width_ratio=self.hough_width_ratio,
+            hough_consistency_threshold=self.hough_consistency_threshold,
+            otsu_threshold_offset=self.otsu_threshold_offset
         )
         
         # 정지선 감지 쿨다운 설정
@@ -225,41 +228,56 @@ class StopLineDetectionNode:
         Returns:
             stopline_bin: 이진화된 정지선 이미지 (0과 1)
         """
-        # 그레이스케일 변환
         stopline_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # 블러링으로 노이즈 제거 (빛 반사 완화)
-        stopline_gray_blurred = cv2.GaussianBlur(stopline_gray, (5, 5), 0)
-        
-        # 방법 1: CLAHE + Otsu (조명 변화에 강함)
-        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8,8))  # clipLimit 낮춤 (2.0 -> 1.5)
-        enhanced = clahe.apply(stopline_gray_blurred)
-        
-        # Otsu 임계값 계산
-        otsu_thresh, stopline_bin_otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # ===== 1단계: 과포화 영역 마스킹 (빛 반사 사전 제거) =====
+        saturation_mask = (stopline_gray < 230) & (stopline_gray > 30)
+        stopline_gray_filtered = cv2.bitwise_and(
+            stopline_gray, stopline_gray,
+            mask=saturation_mask.astype(np.uint8)
+        )
 
-        # Otsu 임계값을 조정하여 더 밝은 영역만 선택 (둔감하게)
+        # ===== 2단계: 적응적 노이즈 제거 =====
+        stopline_denoised = cv2.bilateralFilter(stopline_gray_filtered, 9, 75, 75)
+
+        # ===== 3단계: CLAHE + 적응형 임계값 결합 =====
+        clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(stopline_denoised)
+
+        # Otsu + offset
+        otsu_thresh, _ = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         adjusted_thresh = otsu_thresh + self.otsu_threshold_offset
-        _, stopline_bin_otsu_adjusted = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
-        
-        # 방법 2: 에지 검출 (정지선 경계 강조) - 임계값 높임
-        edges = cv2.Canny(stopline_gray_blurred, 100, 200)  # 50,150 -> 100,200 (둔감하게)
-        
-        # 에지를 두껍게 만들어 히스토그램에서 감지 용이하게
+        _, stopline_bin_otsu = cv2.threshold(enhanced, adjusted_thresh, 255, cv2.THRESH_BINARY)
+
+        # Adaptive threshold (지역적 조명 변화 대응)
+        adaptive_thresh = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, blockSize=21, C=-3
+        )
+
+        # 두 임계값의 교집합 (더 보수적)
+        combined_thresh = cv2.bitwise_and(stopline_bin_otsu, adaptive_thresh)
+
+        # ===== 4단계: 에지 강조 (정지선 경계선) =====
+        edges = cv2.Canny(stopline_denoised, 100, 200)
         kernel = np.ones((3, 3), np.uint8)
-        edges_dilated = cv2.dilate(edges, kernel, iterations=2)
-        
-        # Otsu 결과와 에지 결합
-        stopline_bin_combined = cv2.bitwise_or(stopline_bin_otsu_adjusted, edges_dilated)
-        
-        # 모폴로지 연산으로 노이즈 제거 및 영역 보완
+        edges_dilated = cv2.dilate(edges, kernel, iterations=1)
+
+        # 임계값과 에지 결합
+        stopline_bin_combined = cv2.bitwise_or(combined_thresh, edges_dilated)
+
+        # ===== 5단계: 형태학적 필터링 (원형 객체 제거) =====
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+        horizontal_emphasis = cv2.morphologyEx(
+            stopline_bin_combined, cv2.MORPH_OPEN, horizontal_kernel
+        )
+
         kernel = np.ones((5, 5), np.uint8)
-        stopline_bin_clean = cv2.morphologyEx(stopline_bin_combined, cv2.MORPH_CLOSE, kernel)
-        stopline_bin_clean = cv2.morphologyEx(stopline_bin_clean, cv2.MORPH_OPEN, kernel)
-        
-        # 0과 1로 정규화
-        stopline_bin = (stopline_bin_clean > 0).astype(np.uint8)
-        
+        stopline_clean = cv2.morphologyEx(horizontal_emphasis, cv2.MORPH_CLOSE, kernel)
+
+        # ===== 6단계: 원형도 기반 필터링 =====
+        stopline_bin = self.stopline_detector._filter_circular_regions(stopline_clean)
+
         return stopline_bin
     
     def image_callback(self, msg):
