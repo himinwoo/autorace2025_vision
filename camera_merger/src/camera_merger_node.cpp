@@ -9,7 +9,7 @@ public:
     {
         // 통합 Coss 메시지 초기화
         merged_msg_.cam_steer = 0.0;
-        merged_msg_.mission_state = 9;
+        merged_msg_.mission_state = 0;
         merged_msg_.cam_red_detection = false;
         merged_msg_.cam_blue_detection = false;
 
