@@ -18,8 +18,8 @@
   <arg name="input_size" default="640" />
   
   <!-- Detection settings -->
-  <arg name="confidence_threshold" default="0.5" />
-  <arg name="iou_threshold" default="0.45" />
+  <arg name="confidence_threshold" default="0.15" />
+  <arg name="iou_threshold" default="0.35" />
   
   <!-- Visualization settings -->
   <arg name="enable_visualization" default="true" />
@@ -28,7 +28,7 @@
   <!-- YOLOv8 Detector Node -->
   <node name="yolov8_detector" pkg="yolov8_nuc_optimized" type="yolov8_detector.py" output="screen">
     <!-- Model parameters -->
-    <param name="model_path" value="/home/wego/autorace2025_vision/yolov8_nuc_optimized/scripts/sign.pt" />
+    <param name="model_path" value="/home/kuuve/autorace2025_vision/yolov8_nuc_optimized/scripts/sign.pt" />
     <param name="input_size" value="$(arg input_size)" />
     
     <!-- Performance parameters -->
@@ -55,7 +55,7 @@
     <param name="font_scale" value="0.6" />
     
     <!-- Debug parameters -->
-    <param name="debug" value="false" />
+    <param name="debug" value="true" />
     <param name="show_fps" value="$(arg show_fps)" />
     <param name="log_detections" value="false" />
   </node>

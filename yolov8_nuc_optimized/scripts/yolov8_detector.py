@@ -100,7 +100,7 @@ class YOLOv8Detector:
                 'device': rospy.get_param('~device', 'CPU')
             },
             'detection': {
-                'confidence_threshold': rospy.get_param('~confidence_threshold', 0.5),
+                'confidence_threshold': rospy.get_param('~confidence_threshold', 0.35),
                 'iou_threshold': rospy.get_param('~iou_threshold', 0.45),
                 'max_detections': rospy.get_param('~max_detections', 100),
                 'classes': rospy.get_param('~classes', [])
@@ -194,8 +194,11 @@ class YOLOv8Detector:
             # ROS Image를 OpenCV 이미지로 변환
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
+            # 이미지 전처리 (선명도 및 대비 향상)
+            preprocessed_image = self._preprocess_image(cv_image)
+            
             # 객체 검출 수행
-            detections = self._detect_objects(cv_image)
+            detections = self._detect_objects(preprocessed_image)
             
             # 검출된 클래스를 Coss 메시지로 퍼블리시 (안정화 처리)
             self._update_class_detection(detections)
@@ -218,6 +221,56 @@ class YOLOv8Detector:
             rospy.logerr(f"CV Bridge error: {e}")
         except Exception as e:
             rospy.logerr(f"Error in image callback: {e}")
+    
+    def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        이미지 전처리 - 파란색 표지판 영역 추출 및 향상
+        
+        Args:
+            image: 원본 이미지 (BGR)
+            
+        Returns:
+            전처리된 이미지
+        """
+        # HSV로 변환
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        
+        # 파란색 범위 설정 (제공된 샘플 기반)
+        # H: 53~94, S: 36~63, V: 150~186
+        lower_blue = np.array([50, 30, 145])
+        upper_blue = np.array([100, 70, 190])
+        
+        # 파란색 마스크 생성
+        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+        
+        # 모폴로지 연산으로 노이즈 제거 및 영역 강화
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        blue_mask = cv2.morphologyEx(blue_mask, cv2.MORPH_CLOSE, kernel)
+        blue_mask = cv2.morphologyEx(blue_mask, cv2.MORPH_OPEN, kernel)
+        
+        # 마스크를 3채널로 확장
+        blue_mask_3ch = cv2.cvtColor(blue_mask, cv2.COLOR_GRAY2BGR)
+        
+        # 파란색 영역만 추출
+        blue_region = cv2.bitwise_and(image, blue_mask_3ch)
+        
+        # 파란색 영역 강조 (원본 이미지와 블렌딩)
+        # 파란색 영역은 밝게, 나머지는 어둡게
+        enhanced = cv2.addWeighted(image, 0.3, blue_region, 2.0, 0)
+        
+        # CLAHE로 대비 향상
+        lab = cv2.cvtColor(enhanced, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        
+        # 선명도 향상
+        gaussian = cv2.GaussianBlur(enhanced, (0, 0), 2.0)
+        sharpened = cv2.addWeighted(enhanced, 1.5, gaussian, -0.5, 0)
+        
+        return sharpened
     
     def _detect_objects(self, image: np.ndarray) -> List[Dict]:
         """
