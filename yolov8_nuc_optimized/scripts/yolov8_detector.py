@@ -195,10 +195,10 @@ class YOLOv8Detector:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
             # 이미지 전처리 (선명도 및 대비 향상)
-            preprocessed_image = self._preprocess_image(cv_image)
+            # preprocessed_image = self._preprocess_image(cv_image)
             
             # 객체 검출 수행
-            detections = self._detect_objects(preprocessed_image)
+            detections = self._detect_objects(cv_image)
             
             # 검출된 클래스를 Coss 메시지로 퍼블리시 (안정화 처리)
             self._update_class_detection(detections)
