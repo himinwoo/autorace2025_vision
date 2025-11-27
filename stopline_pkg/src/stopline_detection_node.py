@@ -54,10 +54,6 @@ class StopLineDetectionNode:
         # 색공간 선택 파라미터
         self.use_lab_colorspace = rospy.get_param('~use_lab_colorspace', True)  # LAB 색공간 사용 여부 (빛 번짐에 강함)
         
-        # 노란색 정지선 감지 파라미터 (state 9용)
-        self.yellow_hsv_lower = rospy.get_param('~yellow_hsv_lower', [0, 40, 50])
-        self.yellow_hsv_upper = rospy.get_param('~yellow_hsv_upper', [26, 110, 255])
-        self.yellow_state = rospy.get_param('~yellow_state', 9)  # 노란색 감지할 state
 
         # 퍼블리셔 설정
         self.coss_pub = rospy.Publisher('/camera/stopline/count', Coss, queue_size=1)
@@ -108,9 +104,6 @@ class StopLineDetectionNode:
         rospy.loginfo(f"  - hough_angle_tolerance: {self.hough_angle_tolerance}")
         rospy.loginfo(f"  - hough_use_morphology: {self.hough_use_morphology}")
         rospy.loginfo(f"  - use_lab_colorspace: {self.use_lab_colorspace}")
-        rospy.loginfo(f"  - yellow_hsv_lower: {self.yellow_hsv_lower}")
-        rospy.loginfo(f"  - yellow_hsv_upper: {self.yellow_hsv_upper}")
-        rospy.loginfo(f"  - yellow_state: {self.yellow_state}")
         
         # 메인 루프
         rate = rospy.Rate(20)  # 20Hz
@@ -126,11 +119,8 @@ class StopLineDetectionNode:
         # 원본 이미지 복사 및 하단 크롭
         stopline_img = self.img[self.crop_top:, :].copy()  # 상단 crop_top 픽셀 제거
         
-        # state 9일 때는 노란색 필터링 적용
-        if self.coss_msg.mission_state == self.yellow_state:
-            stopline_bin = self.detect_yellow_stopline(stopline_img)
-        else:
-            stopline_bin = self.detect_white_stopline(stopline_img)
+        # 흰색 정지선 감지
+        stopline_bin = self.detect_white_stopline(stopline_img)
         
         # 현재 state에 맞는 count_threshold 가져오기
         current_count_threshold = self._get_count_threshold(self.coss_msg.mission_state)
@@ -166,8 +156,6 @@ class StopLineDetectionNode:
             
             # mission_state 표시
             state_text = f"Mission State: {self.coss_msg.mission_state}"
-            if self.coss_msg.mission_state == self.yellow_state:
-                state_text += " (YELLOW)"
             cv2.putText(debug_img, state_text, (10, 70), 
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
             
@@ -183,36 +171,6 @@ class StopLineDetectionNode:
             cv2.imshow("Stopline Binary", stopline_bin_visual)
             cv2.waitKey(1)
     
-    def detect_yellow_stopline(self, img):
-        """
-        노란색 정지선 감지 (state 9용)
-        
-        Args:
-            img: BGR 이미지
-            
-        Returns:
-            stopline_bin: 이진화된 정지선 이미지 (0과 1)
-        """
-        # HSV 변환
-        img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        
-        # 노란색 마스크 생성
-        lower_yellow = np.array(self.yellow_hsv_lower, dtype=np.uint8)
-        upper_yellow = np.array(self.yellow_hsv_upper, dtype=np.uint8)
-        yellow_mask = cv2.inRange(img_hsv, lower_yellow, upper_yellow)
-        
-        # 가우시안 블러로 노이즈 제거
-        yellow_mask_blurred = cv2.GaussianBlur(yellow_mask, (5, 5), 0)
-        
-        # 모폴로지 연산으로 노이즈 제거 및 영역 보완
-        kernel = np.ones((5, 5), np.uint8)
-        yellow_mask_clean = cv2.morphologyEx(yellow_mask_blurred, cv2.MORPH_CLOSE, kernel)
-        yellow_mask_clean = cv2.morphologyEx(yellow_mask_clean, cv2.MORPH_OPEN, kernel)
-        
-        # 0과 1로 정규화
-        stopline_bin = (yellow_mask_clean > 0).astype(np.uint8)
-        
-        return stopline_bin
     
     def detect_white_stopline(self, img):
         """
@@ -369,12 +327,6 @@ class StopLineDetectionNode:
         # cone_finish 값 업데이트
         self.cone_finish = msg.cone_finish
         
-        # start_parking 값 업데이트
-        self.start_parking = msg.start_parking
-        
-        if self.start_parking == True:
-            self.coss_msg.mission_state = 10
-        
         # state 6에서만 lidar_flag 전환 감지
         if self.coss_msg.mission_state == 6:
             self._handle_state6_lidar_transition(prev_flag)
@@ -424,10 +376,6 @@ class StopLineDetectionNode:
         # state 6 특수 처리: 라이다 쿨다운이 시작되지 않았으면 감지 불가
         if current_state == 6 and not self.lidar_cooldown_started:
             rospy.logdebug("[State 6] 라이다 감지 대기 중...")
-            return False
-        
-        # state 10 에서는 정지선 감지하지 않음
-        if current_state == 10:
             return False
         
         # 쿨다운 시간 확인
