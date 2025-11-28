@@ -9,7 +9,7 @@
     <param name="stopline_threshold" value="5" />
     <rosparam param="count_thresholds">[3, 5, 5, 7, 3, 5, 1, 4, 5, 5]</rosparam>
     <rosparam param="cooldown_durations">[3.0, 10.0, 5.0, 15.0, 1.5, 3.0, 3.0, 3.0, 3.0, 3.0, 20.0]</rosparam>
-    <param name="show_debug_image" value="flase" />
+    <param name="show_debug_image" value="false" />
 
     <!-- 히스토그램 임계값 파라미터 -->
     <param name="histogram_threshold" value="200" />
@@ -27,6 +27,6 @@
     <!-- 색공간 선택 파라미터 -->
     <param name="use_lab_colorspace" value="false" />
 
-    <param name="log_level" value="debug"/>
+    <!-- <param name="log_level" value="debug"/> -->
   </node>
 </launch>
